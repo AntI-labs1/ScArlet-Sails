@@ -1,0 +1,124 @@
+project_name: "Scarlet Sails"
+creation_date: "2025-09-28T06:51:50-04:00"
+version: "1.0"
+source_lessons: "KIT_RnD_Layer4 Valkyrie Analysis"
+
+core_principles:
+  - rule_id: "CORE-001"
+    principle: "MVP First"
+    statement: "Любая функциональность должна сначала работать в простейшем виде"
+    enforced_by: "Обязательный MVP checkpoint перед расширением"
+    
+  - rule_id: "CORE-002"
+    principle: "Data→Signal→Risk→Exec"
+    statement: "Все торговые решения проходят строго через эти 4 этапа"
+    enforced_by: "Архитектурные тесты проверяют соблюдение pipeline"
+    
+  - rule_id: "CORE-003"
+    principle: "No AI Black Boxes"
+    statement: "ИИ используется только для вспомогательных задач с объяснимыми результатами"
+    enforced_by: "Code review требует обоснования каждого ML решения"
+
+development_rules:
+  - rule_id: "DEV-001"
+    statement: "Любая гипотеза проходит Backtest→Stress test→Paper trade→Review"
+    enforced_by: "CI pipeline valkyrie-hypothesis.yml"
+    
+  - rule_id: "DEV-002"
+    statement: "Максимум 3 активные фичи в разработке одновременно"
+    enforced_by: "WIP лимиты в Kanban board"
+    
+  - rule_id: "DEV-003"
+    statement: "Каждый модуль имеет четкий API контракт"
+    enforced_by: "OpenAPI спецификации для всех интерфейсов"
+    
+  - rule_id: "DEV-004"
+    statement: "Все операции идемпотентны и детерминированы"
+    enforced_by: "Интеграционные тесты проверяют повторяемость"
+    
+  - rule_id: "DEV-005"
+    statement: "Минимум 80% покрытие тестами для критического пути"
+    enforced_by: "Coverage gates в CI/CD"
+
+architecture_rules:
+  - rule_id: "ARCH-001"
+    statement: "Монолит до 100k строк кода, потом микросервисы"
+    enforced_by: "Автоматический подсчет LOC в CI"
+    
+  - rule_id: "ARCH-002"
+    statement: "Immutable data structures для всех торговых данных"
+    enforced_by: "Linting rules проверяют мутабельность"
+    
+  - rule_id: "ARCH-003"
+    statement: "Максимум 3 уровня вложенности в бизнес-логике"
+    enforced_by: "Cyclomatic complexity < 10 для всех функций"
+    
+  - rule_id: "ARCH-004"
+    statement: "Явное разделение конфигураций по окружениям"
+    enforced_by: "Separate config files + validation schemas"
+
+quality_rules:
+  - rule_id: "QUAL-001"
+    statement: "Структурированное логирование с correlation ID для всех операций"
+    enforced_by: "Log format validation в CI"
+    
+  - rule_id: "QUAL-002"
+    statement: "Все внешние API имеют retry logic и circuit breakers"
+    enforced_by: "Integration tests проверяют fault tolerance"
+    
+  - rule_id: "QUAL-003"
+    statement: "Документация обновляется в том же PR что и код"
+    enforced_by: "Doc-as-code с автоматической генерацией"
+    
+  - rule_id: "QUAL-004"
+    statement: "Zero tolerance к утечкам секретов в коде"
+    enforced_by: "Pre-commit hooks + secret scanning"
+
+risk_management_rules:
+  - rule_id: "RISK-001"
+    statement: "Максимум 2% портфеля на одну сделку"
+    enforced_by: "Position size validation в execution layer"
+    
+  - rule_id: "RISK-002"
+    statement: "Stop-loss обязателен для каждой позиции"
+    enforced_by: "Trade validation не пропускает сделки без SL"
+    
+  - rule_id: "RISK-003"
+    statement: "Daily drawdown limit 5%"
+    enforced_by: "Automatic trading halt при превышении"
+    
+  - rule_id: "RISK-004"
+    statement: "Бэктест минимум на 2 года данных перед live торговлей"
+    enforced_by: "Strategy approval process"
+
+kill_criteria:
+  - rule_id: "KILL-001"
+    statement: "Фича убивается если не используется 30 дней"
+    enforced_by: "Usage metrics + automated deprecation warnings"
+    
+  - rule_id: "KILL-002"
+    statement: "Стратегия убивается после 10 дней убытков подряд"
+    enforced_by: "Performance monitoring + automatic disable"
+    
+  - rule_id: "KILL-003"
+    statement: "Модуль убивается если complexity > 15 и coverage < 70%"
+    enforced_by: "Quality gates в CI/CD"
+
+emergency_procedures:
+  - rule_id: "EMRG-001"
+    statement: "Kill switch останавливает всю торговлю за 5 секунд"
+    enforced_by: "Emergency shutdown endpoint + monitoring"
+    
+  - rule_id: "EMRG-002"
+    statement: "Rollback к предыдущей версии за 2 минуты"
+    enforced_by: "Blue-green deployment + health checks"
+    
+  - rule_id: "EMRG-003"
+    statement: "Incident response начинается через 1 минуту после алерта"
+    enforced_by: "PagerDuty integration + escalation matrix"
+
+total_rules: 23
+enforcement_level: "strict"
+violation_consequences: "Automatic build failure + mandatory review"
+review_frequency: "quarterly"
+last_updated: "2025-09-28T06:51:50-04:00"

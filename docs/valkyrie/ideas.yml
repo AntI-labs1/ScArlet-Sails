@@ -1,0 +1,111 @@
+salvage_date: "2025-09-28T06:51:50-04:00"
+source_project: "KIT_RnD_Layer4"
+destination_project: "Scarlet Sails"
+
+viable_ideas:
+  - idea_id: "IDEA-001"
+    description: "4-уровневая архитектура торговой системы"
+    value: "Четкое разделение ответственности между слоями"
+    integration_path: "Упростить до 3 слоев: Data→Strategy→Execution"
+    priority: "high"
+    complexity: "medium"
+    
+  - idea_id: "IDEA-002"
+    description: "CNN для анализа рыночных паттернов"
+    value: "Автоматическое выявление торговых сигналов"
+    integration_path: "Только sandbox Layer-4, с метриками Nature vs Baseline"
+    priority: "medium"
+    complexity: "high"
+    
+  - idea_id: "IDEA-003"
+    description: "MCTS для оптимизации торговых решений"
+    value: "Улучшение качества торговых решений через симуляцию"
+    integration_path: "Исследовательский модуль, не в критическом пути"
+    priority: "low"
+    complexity: "high"
+    
+  - idea_id: "IDEA-004"
+    description: "Система алертов через Telegram"
+    value: "Мониторинг состояния системы в реальном времени"
+    integration_path: "Простая интеграция через webhook"
+    priority: "high"
+    complexity: "low"
+    
+  - idea_id: "IDEA-005"
+    description: "Бэктестинг на исторических данных"
+    value: "Валидация стратегий перед live торговлей"
+    integration_path: "Обязательный этап для всех стратегий"
+    priority: "high"
+    complexity: "medium"
+    
+  - idea_id: "IDEA-006"
+    description: "Риск-менеджмент модуль"
+    value: "Защита от критических потерь"
+    integration_path: "Встроенный в каждый торговый цикл"
+    priority: "high"
+    complexity: "medium"
+    
+  - idea_id: "IDEA-007"
+    description: "Модульная система стратегий"
+    value: "Возможность A/B тестирования разных подходов"
+    integration_path: "Plugin архитектура с единым интерфейсом"
+    priority: "medium"
+    complexity: "medium"
+    
+  - idea_id: "IDEA-008"
+    description: "Real-time данные из множественных источников"
+    value: "Более точные торговые решения"
+    integration_path: "Унифицированный data pipeline с fallback"
+    priority: "high"
+    complexity: "medium"
+
+killed_ideas:
+  - idea_id: "KILL-001"
+    description: "Сложная многоуровневая CNN архитектура"
+    kill_reason: "Overengineering без доказанной эффективности"
+    lesson: "Начать с простых моделей"
+    
+  - idea_id: "KILL-002"
+    description: "Параллельная торговля на множественных платформах"
+    kill_reason: "Сложность интеграции превышает выгоду"
+    lesson: "Сначала одна платформа, потом масштабирование"
+    
+  - idea_id: "KILL-003"
+    description: "Автоматическое создание стратегий через ИИ"
+    kill_reason: "Потеря контроля над торговой логикой"
+    lesson: "ИИ как помощник, не как замена человеческого контроля"
+    
+  - idea_id: "KILL-004"
+    description: "Сложная система микросервисов"
+    kill_reason: "Преждевременная оптимизация"
+    lesson: "Монолит сначала, микросервисы при необходимости"
+
+integration_roadmap:
+  phase_1:
+    name: "Foundation"
+    duration: "2-3 months"
+    ideas: ["IDEA-001", "IDEA-004", "IDEA-008"]
+    success_criteria: "Рабочий MVP с базовой торговлей"
+    
+  phase_2:
+    name: "Validation"
+    duration: "1-2 months"
+    ideas: ["IDEA-005", "IDEA-006"]
+    success_criteria: "Бэктестинг показывает положительные результаты"
+    
+  phase_3:
+    name: "Enhancement"
+    duration: "3-4 months"
+    ideas: ["IDEA-002", "IDEA-007"]
+    success_criteria: "ML модели улучшают базовую производительность"
+    
+  phase_4:
+    name: "Research"
+    duration: "ongoing"
+    ideas: ["IDEA-003"]
+    success_criteria: "Исследовательские результаты для будущих версий"
+
+total_viable_ideas: 8
+total_killed_ideas: 4
+integration_complexity: "medium"
+estimated_timeline: "6-9 months for full implementation"
