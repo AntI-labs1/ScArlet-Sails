@@ -2,100 +2,99 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.model_selection import train_test_split
 import os
-import numpy as np
-from prepare_data import load_and_preprocess_data
 
 class CNN1D(nn.Module):
-    def __init__(self, input_channels, output_size):
+    def __init__(self, input_features, sequence_length=60):
         super(CNN1D, self).__init__()
-        self.conv1 = nn.Conv1d(input_channels, 64, kernel_size=3, padding=1)
-        self.relu = nn.ReLU()
-        self.pool = nn.MaxPool1d(kernel_size=2)
-        self.conv2 = nn.Conv1d(64, 128, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv1d(input_features, 64, kernel_size=7, padding=3)
+        self.conv2 = nn.Conv1d(64, 32, kernel_size=5, padding=2)
+        self.pool = nn.MaxPool1d(2)
         self.flatten = nn.Flatten()
-        self.fc_input_size = self._get_conv_output_size(input_channels)
-        self.fc1 = nn.Linear(self.fc_input_size, 50)
-        self.fc2 = nn.Linear(50, output_size)
-    
-    def _get_conv_output_size(self, input_channels):
-        dummy_input = torch.randn(1, input_channels, 60)  # Исправлено на 60
-        x = self.conv1(dummy_input)
-        x = self.relu(x)
-        x = self.pool(x)
-        x = self.conv2(x)
-        x = self.relu(x)
-        x = self.pool(x)
-        return x.flatten().size(0)
-    
+        self.fc1 = nn.Linear(32 * 15, 64)  # 60->30->15 после 2 pooling
+        self.fc2 = nn.Linear(64, 1)
+        self.dropout = nn.Dropout(0.3)
+        self.relu = nn.ReLU()
+
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.relu(x)
+        # x: (batch, timesteps, features)
+        x = x.transpose(1, 2)  # -> (batch, features, timesteps)
+        x = self.relu(self.conv1(x))
         x = self.pool(x)
-        x = self.conv2(x)
-        x = self.relu(x)
+        x = self.relu(self.conv2(x))
         x = self.pool(x)
         x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.relu(x)
+        x = self.dropout(self.relu(self.fc1(x)))
         x = self.fc2(x)
         return x
 
-def train_model(X, y, model_path="models/1d_cnn_model.pth", epochs=30, batch_size=64, learning_rate=0.001):
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    
-    input_channels = X.shape[2]
-    output_size = 1
-    model = CNN1D(input_channels, output_size)
+if __name__ == "__main__":
+    import sys
+    sys.path.append('scripts')
+    from prepare_data import load_and_preprocess_data
+
+    X_train, X_test, y_train, y_test, scaler = load_and_preprocess_data()
+    print(f"Data loaded - Train: {X_train.shape}, Test: {X_test.shape}")
+
+    input_features = X_train.shape[2]
+    model = CNN1D(input_features, sequence_length=60)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    X_test = X_test.to(device)
-    y_test = y_test.to(device)
+    X_train, X_test = X_train.to(device), X_test.to(device)
+    y_train, y_test = y_train.to(device), y_test.to(device)
+
     print(f"Using device: {device}")
-    print(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
-    print(f"Features: {input_channels}")
-    
-    for epoch in range(epochs):
+    print(f"Training samples: {len(X_train)}")
+    print(f"Test samples: {len(X_test)}")
+    print(f"Features: {input_features}")
+
+    # Training
+    train_dataset = TensorDataset(X_train, y_train)
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+    print("Training with CORRECTED architecture...")
+    for epoch in range(30):
         model.train()
         epoch_loss = 0
         for batch_X, batch_y in train_loader:
-            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-            batch_X = batch_X.permute(0, 2, 1)
-            
+            # НЕТ permute здесь - он в forward()
             optimizer.zero_grad()
             outputs = model(batch_X)
             loss = criterion(outputs.squeeze(), batch_y)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
-        
+
         if (epoch + 1) % 5 == 0:
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {epoch_loss/len(train_loader):.4f}")
-    
-    # Test accuracy
+            avg_loss = epoch_loss / len(train_loader)
+            print(f"Epoch [{epoch+1}/30], Loss: {avg_loss:.4f}")
+
+    # Test evaluation
     model.eval()
     with torch.no_grad():
-        X_test_permuted = X_test.permute(0, 2, 1)
-        outputs = model(X_test_permuted)
-        predictions = torch.sigmoid(outputs) > 0.5
+        outputs = model(X_test)  # НЕТ permute
+        predictions = (torch.sigmoid(outputs) > 0.5).float()
         accuracy = (predictions.squeeze() == y_test).float().mean()
-        print(f"Final Test Accuracy: {accuracy:.4f}")
-    
-    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    torch.save(model.state_dict(), model_path)
-    print(f"Model saved to {model_path}")
-    
-    return model
+        
+        # Additional metrics
+        tp = ((predictions.squeeze() == 1) & (y_test == 1)).sum().item()
+        fp = ((predictions.squeeze() == 1) & (y_test == 0)).sum().item()
+        tn = ((predictions.squeeze() == 0) & (y_test == 0)).sum().item()
+        fn = ((predictions.squeeze() == 0) & (y_test == 1)).sum().item()
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        
+        print(f"\n=== FINAL RESULTS ===")
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"True Positives: {tp}, False Positives: {fp}")
+        print(f"True Negatives: {tn}, False Negatives: {fn}")
 
-if __name__ == "__main__":
-    X, y, scaler_X, scaler_y = load_and_preprocess_data()
-    print(f"Data loaded: X{X.shape}, y{y.shape}")
-    trained_model = train_model(X, y)
-    print("Model training complete.")
+    os.makedirs("models", exist_ok=True)
+    torch.save(model.state_dict(), "models/corrected_cnn_model.pth")
+    print("\nModel saved. Training complete.")

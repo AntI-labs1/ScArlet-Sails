@@ -5,7 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 import torch
 import joblib
 
-def load_and_preprocess_data(data_dir="data/raw", sequence_length=60, target_column="target_binary"):
+def load_and_preprocess_data(data_dir="data/raw", sequence_length=60):
     all_data = []
     for filename in os.listdir(data_dir):
         if filename.endswith(".parquet") and "15m" in filename:
@@ -14,82 +14,87 @@ def load_and_preprocess_data(data_dir="data/raw", sequence_length=60, target_col
             all_data.append(df)
     
     if not all_data:
-        raise ValueError("No 15m parquet files found in data/raw.")
+        raise ValueError("No 15m parquet files found.")
     
     combined_df = pd.concat(all_data).sort_index()
     combined_df = combined_df[~combined_df.index.duplicated(keep="first")]
     
-    # RSI (14 periods)
+    # Target FIRST
+    FUTURE_BARS = 4
+    THRESHOLD = 0.002
+    combined_df['target_binary'] = (combined_df['close'].shift(-FUTURE_BARS) > combined_df['close'] * (1 + THRESHOLD)).astype(int)
+    combined_df = combined_df[:-FUTURE_BARS].copy()
+    
+    # Indicators
     def calculate_rsi(series, period=14):
         delta = series.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
         rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
+        return 100 - (100 / (1 + rs))
     
     combined_df['RSI_14'] = calculate_rsi(combined_df['close'], 14)
-    
-    # EMA (9, 21)
     combined_df['EMA_9'] = combined_df['close'].ewm(span=9, adjust=False).mean()
     combined_df['EMA_21'] = combined_df['close'].ewm(span=21, adjust=False).mean()
-    
-    # Bollinger Bands (20, 2std)
     combined_df['BB_middle'] = combined_df['close'].rolling(window=20).mean()
     combined_df['BB_std'] = combined_df['close'].rolling(window=20).std()
     combined_df['BB_upper'] = combined_df['BB_middle'] + (combined_df['BB_std'] * 2)
     combined_df['BB_lower'] = combined_df['BB_middle'] - (combined_df['BB_std'] * 2)
     
-    # ATR (14 periods)
-    combined_df['HL'] = combined_df['high'] - combined_df['low']
-    combined_df['HC'] = abs(combined_df['high'] - combined_df['close'].shift())
-    combined_df['LC'] = abs(combined_df['low'] - combined_df['close'].shift())
-    combined_df['TR'] = combined_df[['HL', 'HC', 'LC']].max(axis=1)
-    combined_df['ATR_14'] = combined_df['TR'].rolling(window=14).mean()
-    combined_df.drop(['HL', 'HC', 'LC', 'TR'], axis=1, inplace=True)
+    high_low = combined_df['high'] - combined_df['low']
+    high_close = abs(combined_df['high'] - combined_df['close'].shift())
+    low_close = abs(combined_df['low'] - combined_df['close'].shift())
+    true_range = pd.DataFrame({'HL': high_low, 'HC': high_close, 'LC': low_close}).max(axis=1)
+    combined_df['ATR_14'] = true_range.rolling(window=14).mean()
     
-    # OBV
-    combined_df['OBV'] = (np.sign(combined_df['close'].diff()) * combined_df['volume']).fillna(0).cumsum()
-    
-    # Удалить NaN после индикаторов
+    # Remove close to avoid leakage
     combined_df = combined_df.dropna()
-    
-    # Binary classification target
-    combined_df['target_binary'] = (combined_df['close'].pct_change(4).shift(-4) > 0.002).astype(int)
-    combined_df = combined_df[:-4]
-    
-    # Features (все кроме target)
-    feature_cols = [col for col in combined_df.columns if col != target_column]
+    feature_cols = [col for col in combined_df.columns if col not in ['target_binary', 'close']]
     
     X_data = combined_df[feature_cols].values
-    y_data = combined_df[target_column].values
+    y_data = combined_df['target_binary'].values
     
-    # Scalers
-    scaler_X = MinMaxScaler(feature_range=(0, 1))
-    scaled_X_data = scaler_X.fit_transform(X_data)
+    # Create sequences WITHOUT scaling
+    X_sequences = []
+    y_targets = []
+    for i in range(len(X_data) - sequence_length):
+        X_sequences.append(X_data[i:i+sequence_length])
+        y_targets.append(y_data[i+sequence_length])
     
-    # Binary target не нормализуется
-    scaled_y_data = y_data
+    X = np.array(X_sequences)
+    y = np.array(y_targets)
     
-    X, y = [], []
-    for i in range(len(scaled_X_data) - sequence_length):
-        X.append(scaled_X_data[i:i+sequence_length])
-        y.append(scaled_y_data[i+sequence_length])
+    # TEMPORAL SPLIT FIRST
+    split_idx = int(len(X) * 0.8)
+    X_train_raw = X[:split_idx]
+    X_test_raw = X[split_idx:]
+    y_train = y[:split_idx]
+    y_test = y[split_idx:]
     
-    X = np.array(X)
-    y = np.array(y)
+    # FIT SCALER ONLY ON TRAIN
+    scaler = MinMaxScaler()
+    X_train_reshaped = X_train_raw.reshape(-1, X_train_raw.shape[-1])
+    scaler.fit(X_train_reshaped)
     
-    X = torch.tensor(X, dtype=torch.float32)
-    y = torch.tensor(y, dtype=torch.float32)
+    # TRANSFORM both using train parameters
+    X_train_scaled = scaler.transform(X_train_reshaped).reshape(X_train_raw.shape)
+    X_test_reshaped = X_test_raw.reshape(-1, X_test_raw.shape[-1])
+    X_test_scaled = scaler.transform(X_test_reshaped).reshape(X_test_raw.shape)
+    
+    # To tensors
+    X_train = torch.tensor(X_train_scaled, dtype=torch.float32)
+    X_test = torch.tensor(X_test_scaled, dtype=torch.float32)
+    y_train = torch.tensor(y_train, dtype=torch.float32)
+    y_test = torch.tensor(y_test, dtype=torch.float32)
     
     os.makedirs("models", exist_ok=True)
-    joblib.dump(scaler_X, "models/scaler_X.pkl")
+    joblib.dump(scaler, "models/scaler_X.pkl")
     
-    return X, y, scaler_X, None
+    return X_train, X_test, y_train, y_test, scaler
 
 if __name__ == "__main__":
-    X, y, scaler_X, _ = load_and_preprocess_data()
-    print(f"Shape of X: {X.shape}")
-    print(f"Shape of y: {y.shape}")
-    print(f"Number of features: {X.shape[2]}")
-    print("Data preparation complete.")
+    X_train, X_test, y_train, y_test, scaler = load_and_preprocess_data()
+    print(f"Train X: {X_train.shape}, Train y: {y_train.shape}")
+    print(f"Test X: {X_test.shape}, Test y: {y_test.shape}")
+    print(f"Features: {X_train.shape[2]}")
+    print("Data preparation complete - CORRECT VERSION")

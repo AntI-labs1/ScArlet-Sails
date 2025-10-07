@@ -1,4 +1,39 @@
 /data/
 .env
 /configs/telegram.json
+# Data files - КРИТИЧЕСКИ ВАЖНО
+data/raw/*.parquet
+data/processed/*.parquet
+data/raw/*.csv
+data/processed/*.csv
+*.pt
+*.pkl
+*.h5
+*.npy
+*.npz
+
+# Models - не загружаем веса
+models/*.pth
+models/*.pkl
+models/*.h5
+models/*.ckpt
+models/*.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+temp/
+tmp/
 
