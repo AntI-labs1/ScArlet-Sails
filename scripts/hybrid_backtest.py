@@ -54,14 +54,13 @@ ASSETS = [
 TIMEFRAMES = ['15m', '1h', '4h', '1d']
 
 DATA_DIR = Path('data/raw')
-FEATURES_DIR = Path('data/features')
 OUTPUT_DIR = Path('reports/hybrid_backtest')
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 # Hybrid system config
 ML_THRESHOLD = 0.6  # ML probability threshold
-ENABLE_ML_FILTER = True
-ENABLE_CRISIS_GATE = True
+ENABLE_ML_FILTER = False  # Disabled for now
+ENABLE_CRISIS_GATE = False  # Disabled for now
 
 # ============================================================================
 # HYBRID BACKTEST ENGINE
@@ -273,92 +272,74 @@ class HybridBacktestEngine:
 
 def load_data(asset, timeframe):
     """
-    Load OHLCV data with indicators
+    Load OHLCV data and add indicators
 
-    Looks for:
-    1. Features file (data/features/{asset}USDT_{timeframe}.parquet)
-    2. Raw file (data/raw/{asset}USDT_{timeframe}.parquet)
-    3. Raw file (data/raw/{asset}_USDT_{timeframe}.parquet) - with underscore
+    Uses ONLY raw data (data/raw/*.parquet)
+    Features files are not compatible (no 'rsi' column)
     """
-    # Try features first (no underscore)
-    features_path = FEATURES_DIR / f"{asset}USDT_{timeframe}.parquet"
-    if features_path.exists():
-        try:
-            df = pd.read_parquet(features_path)
-            print(f"   ✅ Loaded features: {len(df)} bars")
-            return df
-        except Exception as e:
-            print(f"   ⚠️  Failed to load features: {e}")
-
-    # Try features with underscore
-    features_path_us = FEATURES_DIR / f"{asset}_USDT_{timeframe}.parquet"
-    if features_path_us.exists():
-        try:
-            df = pd.read_parquet(features_path_us)
-            print(f"   ✅ Loaded features: {len(df)} bars")
-            return df
-        except Exception as e:
-            print(f"   ⚠️  Failed to load features: {e}")
-
-    # Try raw data (no underscore)
-    raw_path = DATA_DIR / f"{asset}USDT_{timeframe}.parquet"
+    # Try raw data with underscore (BTC_USDT_15m.parquet format)
+    raw_path = DATA_DIR / f"{asset}_USDT_{timeframe}.parquet"
     if raw_path.exists():
         try:
             df = pd.read_parquet(raw_path)
             print(f"   ✅ Loaded raw data: {len(df)} bars")
 
-            # Add basic indicators if missing
+            # Add indicators
             df = add_indicators(df)
             return df
         except Exception as e:
-            print(f"   ⚠️  Failed to load raw: {e}")
+            print(f"   ❌ Failed to load {raw_path}: {e}")
+            return None
 
-    # Try raw data with underscore (BTC_USDT_15m.parquet format)
-    raw_path_us = DATA_DIR / f"{asset}_USDT_{timeframe}.parquet"
-    if raw_path_us.exists():
+    # Try without underscore (BTCUSDT_15m.parquet format)
+    raw_path2 = DATA_DIR / f"{asset}USDT_{timeframe}.parquet"
+    if raw_path2.exists():
         try:
-            df = pd.read_parquet(raw_path_us)
+            df = pd.read_parquet(raw_path2)
             print(f"   ✅ Loaded raw data: {len(df)} bars")
 
-            # Add basic indicators if missing
+            # Add indicators
             df = add_indicators(df)
             return df
         except Exception as e:
-            print(f"   ⚠️  Failed to load raw: {e}")
+            print(f"   ❌ Failed to load {raw_path2}: {e}")
+            return None
 
     print(f"   ❌ No data found for {asset} {timeframe}")
-    print(f"      Tried: {features_path}, {features_path_us}, {raw_path}, {raw_path_us}")
+    print(f"      Tried: {raw_path}, {raw_path2}")
     return None
 
 def add_indicators(df):
-    """Add RSI and ATR if missing"""
+    """Add RSI and ATR indicators"""
     # Check required columns
     required = ['open', 'high', 'low', 'close', 'volume']
     missing = [col for col in required if col not in df.columns]
     if missing:
-        print(f"   ⚠️  Missing OHLCV columns: {missing}")
+        print(f"   ❌ Missing OHLCV columns: {missing}")
         return df
 
     # Add RSI if missing
     if 'rsi' not in df.columns and 'RSI_14' not in df.columns:
         try:
-            # Simple RSI
+            # Simple RSI calculation
             delta = df['close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / (loss + 1e-10)  # Avoid division by zero
             df['rsi'] = 100 - (100 / (1 + rs))
 
-            # Check if RSI was added successfully
             rsi_valid = df['rsi'].notna().sum()
-            print(f"   ✅ Added RSI indicator ({rsi_valid} valid values)")
+            print(f"   ✅ Added RSI ({rsi_valid} valid values)")
         except Exception as e:
             print(f"   ❌ Failed to add RSI: {e}")
             return df
+    else:
+        print(f"   ℹ️  RSI already exists")
 
+    # Add ATR if missing
     if 'atr' not in df.columns and 'ATR_14' not in df.columns:
         try:
-            # Simple ATR
+            # Simple ATR calculation
             high_low = df['high'] - df['low']
             high_close = abs(df['high'] - df['close'].shift())
             low_close = abs(df['low'] - df['close'].shift())
@@ -366,11 +347,12 @@ def add_indicators(df):
             true_range = ranges.max(axis=1)
             df['atr'] = true_range.rolling(14).mean()
 
-            # Check if ATR was added successfully
             atr_valid = df['atr'].notna().sum()
-            print(f"   ✅ Added ATR indicator ({atr_valid} valid values)")
+            print(f"   ✅ Added ATR ({atr_valid} valid values)")
         except Exception as e:
             print(f"   ❌ Failed to add ATR: {e}")
+    else:
+        print(f"   ℹ️  ATR already exists")
 
     return df
 
