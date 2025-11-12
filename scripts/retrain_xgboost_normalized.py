@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.xgboost_model import XGBoostModel
+from features.multi_timeframe_extractor import MultiTimeframeFeatureExtractor
 from sklearn.preprocessing import StandardScaler
 
 # Directories
@@ -40,7 +41,7 @@ PROFIT_THRESHOLD = 0.01  # 1%
 MAX_SAMPLES = 50000
 
 
-class NormalizedMultiTFExtractor:
+class NormalizedMultiTFExtractor_OLD:
     """
     Извлекает НОРМАЛИЗОВАННЫЕ multi-TF features
     Использует returns и ratios вместо absolute prices
@@ -204,7 +205,7 @@ def main():
     print(f"STEP 1: Loading multi-timeframe data")
     print(f"{'='*100}")
 
-    extractor = NormalizedMultiTFExtractor(data_dir=str(DATA_DIR))
+    extractor = MultiTimeframeFeatureExtractor(data_dir=str(DATA_DIR))
     all_tf, primary_df = extractor.prepare_multi_timeframe_data(ASSET, TARGET_TF)
 
     print(f"✅ Loaded {len(primary_df)} bars")
@@ -253,7 +254,7 @@ def main():
         if i % 5000 == 0:
             print(f"   Progress: {i:,} / {len(sample_indices):,} ({i/len(sample_indices)*100:.1f}%)")
 
-        features = extractor.extract_features_at_bar(primary_df, bar_idx)
+        features = extractor.extract_features_at_bar(all_tf, TARGET_TF, bar_idx)
 
         if features is not None:
             X_list.append(features)
