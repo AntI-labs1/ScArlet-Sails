@@ -45,9 +45,8 @@ RSI_THRESHOLD = 30.0
 
 # All assets and timeframes
 ASSETS = [
-    "BTC", "ETH", "BNB", "SOL", "XRP",
-    "ADA", "DOGE", "AVAX", "LINK", "MATIC",
-    "DOT", "UNI", "ATOM", "LTC"
+    "BTC", "ETH", "LTC", "LINK", "ALGO", "HBAR", "SOL",
+    "DOT", "AVAX", "UNI", "ENA", "ONDO", "SUI", "LDO"
 ]
 
 TIMEFRAMES = ["15m", "1h", "4h", "1d"]
