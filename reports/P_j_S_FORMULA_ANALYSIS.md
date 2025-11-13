@@ -398,7 +398,22 @@ P_j(S) = ML(market_state, portfolio_state, risk, regime, history) · ∏_k I_k
 - Stop-loss optimization (use fixed from best_tp_sl_config.json)
 - Multi-step lookahead (just immediate decision)
 
+**Advanced features for 2MVP:**
+- **News sentiment analysis** - Real-time news scraping and sentiment scoring
+- **Anomaly detection** - Bot activity detection, manipulation detection
+- **Order book depth analysis** - Bid/ask depth, liquidity measurement, spread analysis
+- **Full OpportunityScorer (38 features)** - Currently using simplified version (4 features)
+- **Multi-exchange arbitrage detection**
+- **Advanced volatility modeling** - GARCH, regime-switching models
+
 **Reason:** 5 days is tight - focus on core P_j(S) components first!
+
+**2MVP Roadmap:**
+1. Integrate news API (Twitter, CoinDesk, etc.)
+2. Build anomaly detection system (order patterns, volume spikes)
+3. Add order book monitoring (WebSocket feeds from exchanges)
+4. Retrain OpportunityScorer with all 38 features
+5. Advanced risk modeling (VaR, CVaR, stress testing)
 
 ---
 
