@@ -362,6 +362,7 @@ class ImprovedRuleBasedStrategy:
         use_atr_filter: bool = True,
         volume_min: float = 1.5,
         atr_max: float = 0.05,
+        ema_min_ratio: float = 1.0,
     ):
         """
         Initialize improved rule-based strategy.
@@ -373,6 +374,8 @@ class ImprovedRuleBasedStrategy:
             use_atr_filter: Whether to limit ATR
             volume_min: Minimum volume ratio
             atr_max: Maximum ATR percentage
+            ema_min_ratio: Minimum EMA_9/EMA_21 ratio (default 1.0 = strict uptrend)
+                          Use 0.99 for less strict (allows nearly equal EMAs)
         """
         self.rsi_threshold = rsi_threshold
         self.use_ema_filter = use_ema_filter
@@ -380,6 +383,7 @@ class ImprovedRuleBasedStrategy:
         self.use_atr_filter = use_atr_filter
         self.volume_min = volume_min
         self.atr_max = atr_max
+        self.ema_min_ratio = ema_min_ratio
 
     def should_enter(
         self,
@@ -408,7 +412,10 @@ class ImprovedRuleBasedStrategy:
 
         # Filter 2: EMA trend (OPTIONAL)
         if self.use_ema_filter:
-            if ema_9 <= ema_21:  # Not in uptrend
+            # Check if EMA_9 >= EMA_21 * ema_min_ratio
+            # ema_min_ratio=1.0 → strict uptrend (EMA_9 > EMA_21)
+            # ema_min_ratio=0.99 → less strict (EMA_9 >= EMA_21 * 0.99)
+            if ema_9 < ema_21 * self.ema_min_ratio:
                 return False
 
         # Filter 3: Volume spike (OPTIONAL)
