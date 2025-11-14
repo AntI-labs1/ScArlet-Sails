@@ -362,8 +362,20 @@ def main():
     json_results = []
     for r in all_results:
         r_copy = r.copy()
+        # Handle infinity
         if r_copy['profit_factor'] == float('inf'):
             r_copy['profit_factor'] = 'inf'
+        # Convert numpy types to Python native types
+        for key, value in r_copy.items():
+            if isinstance(value, np.floating):
+                r_copy[key] = float(value)
+            elif isinstance(value, np.integer):
+                r_copy[key] = int(value)
+            elif isinstance(value, dict):
+                # Convert nested dict values
+                for k, v in value.items():
+                    if isinstance(v, (np.floating, np.integer)):
+                        r_copy[key][k] = float(v) if isinstance(v, np.floating) else int(v)
         json_results.append(r_copy)
 
     with open(output_file, 'w') as f:
