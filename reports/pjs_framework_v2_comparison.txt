@@ -1,0 +1,17 @@
+P_j(S) FRAMEWORK TEST - V2 COMPARISON
+================================================================================
+
+V1 (Costs only):
+  Trades: 75
+  Win Rate: 34.7%
+  Profit Factor: 1.05
+  Total P&L: $2,188
+
+V2 (Costs + OpportunityScorer):
+  Trades: 75
+  Win Rate: 34.7%
+  Profit Factor: 1.05
+  Total P&L: $2,188
+
+Conclusion:
+  OpportunityScorer filtered but quality impact mixed

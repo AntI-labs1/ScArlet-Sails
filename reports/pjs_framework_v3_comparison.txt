@@ -1,0 +1,18 @@
+
+V1:
+  Trades: 75
+  Win Rate: 34.7%
+  Profit Factor: 1.05
+  Total P&L: $2,188
+
+V2:
+  Trades: 75
+  Win Rate: 34.7%
+  Profit Factor: 1.05
+  Total P&L: $2,188
+
+V3:
+  Trades: 75
+  Win Rate: 34.7%
+  Profit Factor: 1.05
+  Total P&L: $2,188
