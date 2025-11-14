@@ -550,6 +550,7 @@ class PjSBacktestEngine:
                     )
                     self.trades.append(trade)
                     position = None
+                    last_exit_bar = i  # CRITICAL: Reset cooldown timer
 
             # Check entry conditions
             if position is None and raw_signals[i] > 0:
@@ -605,6 +606,8 @@ class PjSBacktestEngine:
                 pnl_pct=pnl_pct
             )
             self.trades.append(trade)
+            position = None
+            last_exit_bar = len(ohlcv) - 1  # Update cooldown timer even at end
 
         # Calculate metrics
         if len(self.trades) > 0:
