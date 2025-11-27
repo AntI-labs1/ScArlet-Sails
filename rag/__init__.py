@@ -1,11 +1,22 @@
-"""RAG Module - Trading Pattern Extraction System.
+"""
+Scarlet Sails RAG Pattern Extractor
+===================================
 
-This module provides tools for extracting and analyzing trading patterns
-from cryptocurrency market data.
+Автоматическое извлечение индикаторов для паттернов.
+
+Использование из командной строки:
+    python -m rag.cli BTC 1h "2024-11-26 14:00"
+    
+Использование в коде:
+    from rag.extractor import PatternExtractor
+    
+    extractor = PatternExtractor("BTC", "1h")
+    data = extractor.extract("2024-11-26 14:00")
+    extractor.save(data)
 """
 
-from rag.extractor import PatternExtractor
-from rag.config import RAGConfig
+from .extractor import PatternExtractor
+from .config import COINS, TIMEFRAMES, PATTERNS_DIR
 
-__version__ = "0.1.0"
-__all__ = ["PatternExtractor", "RAGConfig"]
+__all__ = ['PatternExtractor', 'COINS', 'TIMEFRAMES', 'PATTERNS_DIR']
+__version__ = '1.0.0'
