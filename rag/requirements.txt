@@ -1,0 +1,15 @@
+# Core dependencies for RAG module
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Pattern analysis
+scikit-learn>=1.3.0
+fastdtw>=0.3.4
+
+# Visualization (optional)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# CLI
+argparse
