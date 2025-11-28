@@ -1,13 +1,18 @@
 """
-Pattern Extractor
-=================
+Pattern Extractor v2.0 "Time Capsule"
+=====================================
 
-Извлекает данные паттерна по timestamp.
+Извлекает данные паттерна по timestamp + сохраняет снапшот сырых данных.
+
+Ключевое улучшение: Снапшот (100 баров до + 50 после) позволяет:
+- Пересчитывать метрики при изменении формул
+- Тестировать разные TP/SL на одних данных
+- Искать корреляции в истории
 
 Пример использования:
     extractor = PatternExtractor("BTC", "1h")
     data = extractor.extract("2024-11-26 14:00")
-    extractor.save(data)
+    extractor.save(data)  # Сохраняет JSON + CSV снапшот
 """
 
 import pandas as pd
@@ -28,13 +33,14 @@ from .config import (
 class PatternExtractor:
     """
     Извлекает все метрики для паттерна Box Range.
+    Сохраняет "Капсулу Времени" — снапшот сырых данных.
     
     Workflow:
     1. Егор 1 находит паттерн на TradingView
     2. Записывает время свечи пробития
     3. Extractor находит эту свечу + свечу ДО неё
     4. Извлекает все 74 features
-    5. Сохраняет в JSON
+    5. Сохраняет в JSON + CSV снапшот
     """
     
     def __init__(self, coin: str, timeframe: str):
@@ -60,7 +66,6 @@ class PatternExtractor:
             if 'timestamp' in self.df.columns:
                 self.df.set_index('timestamp', inplace=True)
             else:
-                # Попробовать первую колонку
                 self.df.index = pd.to_datetime(self.df.index)
         
         # UTC timezone
@@ -73,16 +78,6 @@ class PatternExtractor:
     def _find_bar(self, time_str: str) -> Tuple[int, pd.Timestamp]:
         """
         Найти бар по времени.
-        
-        Parameters
-        ----------
-        time_str : str
-            Время в формате 'YYYY-MM-DD HH:MM'
-            
-        Returns
-        -------
-        Tuple[int, pd.Timestamp]
-            (индекс, точное время бара)
         """
         try:
             target = pd.Timestamp(time_str)
@@ -91,10 +86,8 @@ class PatternExtractor:
         except Exception as e:
             raise ValueError(f"Неверный формат времени: {time_str}. Используй YYYY-MM-DD HH:MM")
         
-        # Допустимое отклонение = половина таймфрейма
         tolerance = timedelta(minutes=TF_MINUTES[self.timeframe] // 2)
         
-        # Поиск ближайшего
         time_diff = abs(self.df.index - target)
         min_idx = time_diff.argmin()
         actual = self.df.index[min_idx]
@@ -134,18 +127,6 @@ class PatternExtractor:
     ) -> Dict[str, Any]:
         """
         Рассчитать метрики Box Range.
-        
-        Parameters
-        ----------
-        breakout_idx : int
-            Индекс бара пробития
-        lookback : int
-            Сколько баров назад для определения box
-            
-        Returns
-        -------
-        Dict
-            support, resistance, touches, etc.
         """
         start_idx = max(0, breakout_idx - lookback)
         box = self.df.iloc[start_idx:breakout_idx]
@@ -158,7 +139,6 @@ class PatternExtractor:
         box_range = resistance - support
         box_range_pct = (box_range / support) * 100 if support > 0 else 0
         
-        # Касания (0.3% tolerance)
         tol = 0.003
         touches_support = int(sum(
             (box['low'] <= support * (1 + tol)) & 
@@ -169,7 +149,6 @@ class PatternExtractor:
             (box['high'] <= resistance * (1 + tol))
         ))
         
-        # ATR box периода
         tr = pd.concat([
             box['high'] - box['low'],
             abs(box['high'] - box['close'].shift(1)),
@@ -187,12 +166,115 @@ class PatternExtractor:
             "duration_bars": len(box)
         }
     
+    def _extract_snapshot(
+        self,
+        breakout_idx: int,
+        lookback: int = 100,
+        forward: int = 50
+    ) -> pd.DataFrame:
+        """
+        Вырезать снапшот сырых данных вокруг пробоя.
+        
+        Это "Капсула Времени" — замороженные данные для:
+        - Пересчёта метрик при изменении формул
+        - Тестирования разных TP/SL
+        - Поиска корреляций
+        
+        Parameters
+        ----------
+        breakout_idx : int
+            Индекс бара пробития
+        lookback : int
+            Баров ДО пробоя (история/контекст)
+        forward : int
+            Баров ПОСЛЕ пробоя (будущее/результат)
+            
+        Returns
+        -------
+        pd.DataFrame
+            Снапшот с lookback + 1 + forward баров
+        """
+        start_idx = max(0, breakout_idx - lookback)
+        end_idx = min(len(self.df), breakout_idx + forward + 1)
+        
+        snapshot = self.df.iloc[start_idx:end_idx].copy()
+        
+        # Добавить метку позиции относительно пробоя
+        snapshot['bar_position'] = range(-(breakout_idx - start_idx), end_idx - breakout_idx)
+        
+        return snapshot
+    
+    def _calculate_future_path(
+        self,
+        snapshot: pd.DataFrame,
+        entry_price: float
+    ) -> Dict[str, Any]:
+        """
+        Рассчитать метрики будущего пути цены.
+        
+        Это позволяет тестировать разные TP/SL без перезаписи данных.
+        """
+        # Только бары после пробоя (bar_position > 0)
+        future = snapshot[snapshot['bar_position'] > 0]
+        
+        if len(future) == 0:
+            return {"error": "Нет данных о будущем"}
+        
+        # Максимумы и минимумы после входа
+        max_high = float(future['high'].max())
+        min_low = float(future['low'].min())
+        
+        # Максимальный profit и drawdown
+        max_profit_pct = ((max_high - entry_price) / entry_price) * 100
+        max_drawdown_pct = ((entry_price - min_low) / entry_price) * 100
+        
+        # Когда достигнуты (в барах после входа)
+        bars_to_max = int(future['high'].idxmax().value) if len(future) > 0 else None
+        bars_to_min = int(future['low'].idxmin().value) if len(future) > 0 else None
+        
+        # Симуляция разных TP/SL
+        tp_levels = [1.0, 1.5, 2.0, 2.5, 3.0]  # %
+        sl_levels = [0.5, 1.0, 1.5, 2.0]  # %
+        
+        simulations = {}
+        for tp in tp_levels:
+            for sl in sl_levels:
+                tp_price = entry_price * (1 + tp/100)
+                sl_price = entry_price * (1 - sl/100)
+                
+                result = "OPEN"  # Позиция не закрыта
+                exit_bar = None
+                
+                for i, (_, bar) in enumerate(future.iterrows()):
+                    if bar['high'] >= tp_price:
+                        result = "TP"
+                        exit_bar = i + 1
+                        break
+                    if bar['low'] <= sl_price:
+                        result = "SL"
+                        exit_bar = i + 1
+                        break
+                
+                simulations[f"TP{tp}_SL{sl}"] = {
+                    "result": result,
+                    "exit_bar": exit_bar
+                }
+        
+        return {
+            "max_profit_pct": round(max_profit_pct, 2),
+            "max_drawdown_pct": round(max_drawdown_pct, 2),
+            "future_bars": len(future),
+            "simulations": simulations
+        }
+    
     def extract(
         self,
         breakout_time: str,
         pattern_type: str = "box_range",
         direction: str = "long",
         lookback: int = 48,
+        snapshot_lookback: int = 100,
+        snapshot_forward: int = 50,
         notes: str = ""
     ) -> Dict:
         """
@@ -207,20 +289,24 @@ class PatternExtractor:
         direction : str
             Направление (long, short)
         lookback : int
-            Баров назад для box (по умолчанию 48)
+            Баров назад для box metrics
+        snapshot_lookback : int
+            Баров назад для снапшота (история)
+        snapshot_forward : int
+            Баров вперёд для снапшота (будущее)
         notes : str
             Заметки
             
         Returns
         -------
         Dict
-            Полные данные паттерна
+            Полные данные паттерна + снапшот
         """
         try:
             # 1. Найти бар пробития
             breakout_idx, breakout_actual = self._find_bar(breakout_time)
             
-            # 2. Бар ДО пробития (для индикаторов)
+            # 2. Бар ДО пробития (для индикаторов) — защита от look-ahead
             if breakout_idx < 2:
                 return {"error": "Слишком мало данных до пробития"}
             
@@ -237,11 +323,19 @@ class PatternExtractor:
             # 5. W_box компоненты
             w_box = self._calculate_w_box(setup_features, box_metrics, direction)
             
-            # 6. Формируем результат
+            # 6. Снапшот (Капсула Времени)
+            snapshot = self._extract_snapshot(breakout_idx, snapshot_lookback, snapshot_forward)
+            
+            # 7. Future Path (для тестирования TP/SL)
+            entry_price = breakout_features.get("close", 0)
+            future_path = self._calculate_future_path(snapshot, entry_price) if entry_price > 0 else {}
+            
+            # 8. Формируем результат
             pattern_id = f"{self.coin}_{self.timeframe}_{breakout_actual.strftime('%Y%m%d_%H%M')}"
             
             result = {
                 "id": pattern_id,
+                "version": "2.0",  # Time Capsule версия
                 "created_at": datetime.now().isoformat(),
                 
                 "meta": {
@@ -302,6 +396,17 @@ class PatternExtractor:
                 
                 "w_box": w_box,
                 
+                "future_path": future_path,
+                
+                "snapshot": {
+                    "lookback_bars": snapshot_lookback,
+                    "forward_bars": snapshot_forward,
+                    "total_bars": len(snapshot),
+                    "file": None  # Будет заполнено при сохранении
+                },
+                
+                "_snapshot_df": snapshot,  # Временное хранение для save()
+                
                 "all_features_setup": setup_features
             }
             
@@ -320,12 +425,9 @@ class PatternExtractor:
     ) -> Dict:
         """
         Рассчитать компоненты W_box.
-        
-        W_box = I_range × I_rsi × I_volatility × I_volume
         """
         result = {}
         
-        # I_rsi
         rsi_z = features.get("norm_rsi_zscore")
         if rsi_z is not None:
             if -0.5 <= rsi_z <= 0.5:
@@ -338,7 +440,6 @@ class PatternExtractor:
                 I_rsi = 0.0
             result["I_rsi"] = round(I_rsi, 2)
         
-        # I_volatility (низкая = хорошо для box)
         atr_z = features.get("norm_atr_zscore")
         if atr_z is not None:
             if atr_z < -0.5:
@@ -351,7 +452,6 @@ class PatternExtractor:
                 I_vol = 0.0
             result["I_volatility"] = round(I_vol, 2)
         
-        # I_volume (высокий = хорошо на пробое)
         vol_z = features.get("norm_volume_zscore")
         if vol_z is not None:
             if vol_z > 1.0:
@@ -364,7 +464,6 @@ class PatternExtractor:
                 I_volume = 0.3
             result["I_volume"] = round(I_volume, 2)
         
-        # I_touches (достаточно касаний)
         if "touches_support" in box and "touches_resistance" in box:
             ts = box["touches_support"]
             tr = box["touches_resistance"]
@@ -376,7 +475,6 @@ class PatternExtractor:
                 I_touches = 0.3
             result["I_touches"] = round(I_touches, 2)
         
-        # W_box итоговый
         components = [result.get(k) for k in ["I_rsi", "I_volatility", "I_volume", "I_touches"]]
         components = [c for c in components if c is not None]
         
@@ -390,22 +488,38 @@ class PatternExtractor:
     
     def save(self, data: Dict) -> Optional[Path]:
         """
-        Сохранить паттерн в JSON.
+        Сохранить паттерн в JSON + CSV снапшот.
         
         Returns
         -------
         Path или None
-            Путь к файлу или None при ошибке
+            Путь к JSON файлу или None при ошибке
         """
         if "error" in data:
             print(f"❌ Ошибка: {data['error']}")
             return None
         
-        filename = f"{data['id']}.json"
-        path = PATTERNS_DIR / filename
+        pattern_id = data['id']
         
-        with open(path, 'w', encoding='utf-8') as f:
+        # 1. Сохранить снапшот CSV
+        snapshot_df = data.pop('_snapshot_df', None)
+        if snapshot_df is not None:
+            snapshots_dir = PATTERNS_DIR / "snapshots"
+            snapshots_dir.mkdir(exist_ok=True)
+            
+            snapshot_path = snapshots_dir / f"{pattern_id}.csv"
+            snapshot_df.to_csv(snapshot_path)
+            
+            # Обновить ссылку в данных
+            data['snapshot']['file'] = str(snapshot_path.name)
+            print(f"📸 Снапшот: {snapshot_path}")
+        
+        # 2. Сохранить JSON
+        json_path = PATTERNS_DIR / f"{pattern_id}.json"
+        
+        with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
         
-        print(f"✅ Паттерн сохранён: {path}")
-        return path
+        print(f"✅ Паттерн: {json_path}")
+        
+        return json_path
