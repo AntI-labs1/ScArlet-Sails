@@ -31,7 +31,7 @@ brew install python@3.11
 ### 4. Клонируй репозиторий
 ```bash
 cd ~
-git clone https://github.com/AntI-labs1//ScArlet-Sails.git
+git clone https://github.com/AntI-labs1/ScArlet-Sails.git
 cd ScArlet-Sails
 ```
 
