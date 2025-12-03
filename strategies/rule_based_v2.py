@@ -19,6 +19,8 @@ from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from components.opportunity_scorer import OpportunityScorer
+from core.feature_engine_v2 import CanonicalMarketStateBuilder
+from models.pjs_components import CostCalculator, compute_risk_penalty_from_market_state
 
 logger = logging.getLogger(__name__)
 
@@ -113,20 +115,22 @@ class RuleBasedStrategy:
     
     def __init__(self, config: Dict = None):
         self.config = config or {}
-        
+
         # Initialize components
         self.opportunity_scorer = OpportunityScorer(self.config.get('opportunity', {}))
         self.technical_filters = TechnicalFilters(self.config.get('filters', {}))
-        
+        self.cost_calculator = CostCalculator.from_config(self.config)
+
         # Costs
-        self.commission = self.config.get('commission', 0.001)
-        self.slippage = self.config.get('slippage', 0.0005)
-        self.C_fixed = self.commission + self.slippage
-        
+        self.C_fixed = self.cost_calculator.get_round_trip_cost(
+            self.config.get('use_maker', True)
+        )
+
         # Risk penalty
         self.risk_calculator = None
-        
-        logger.info(f"RuleBasedStrategy initialized: C_fixed={self.C_fixed:.4f}")
+        self.signal_threshold = self.config.get('threshold', 0.05)
+
+        logger.info(f"RuleBasedStrategy initialized: C_fixed={self.C_fixed:.4f}, threshold={self.signal_threshold:.4f}")
     
     def set_risk_calculator(self, risk_calc):
         """Set the AdvancedRiskPenalty calculator instance"""
@@ -160,7 +164,7 @@ class RuleBasedStrategy:
                 spread = market_state.get('spread', 0.001)
                 atr = market_state.get('atr', 0.02)
                 regime = market_state.get('regime', 'normal')
-                
+
                 risk_results = self.risk_calculator.calculate_total_risk_penalty(
                     current_return_shock=current_return_shock,
                     historical_returns=historical_returns,
@@ -170,13 +174,13 @@ class RuleBasedStrategy:
                     atr=atr,
                     regime=regime.upper()
                 )
-                
+
                 risk_penalty = risk_results['total_penalty_adjusted']
             except Exception as e:
                 logger.warning(f"Risk calculation failed: {e}. Using default penalty.")
-                risk_penalty = 0.1
+                risk_penalty = compute_risk_penalty_from_market_state(market_state, self.config)
         else:
-            risk_penalty = 0.0
+            risk_penalty = compute_risk_penalty_from_market_state(market_state, self.config)
         
         # Calculate P_rb(S)
         P_rb = W_opportunity * filters_product - costs - risk_penalty
@@ -188,67 +192,50 @@ class RuleBasedStrategy:
             'risk_penalty': risk_penalty,
             'P_rb': P_rb
         }
-        
+
         return P_rb, components
-    
+
+    def generate_signal(self, df: pd.DataFrame, market_states: list = None) -> int:
+        """Generate a single signal for the latest bar."""
+        if df is None or df.empty:
+            raise ValueError("Input dataframe is empty; cannot generate signal")
+
+        signals_df = self.generate_signals(df, market_states)
+        if signals_df.empty:
+            raise ValueError("No signals generated from input dataframe")
+
+        return int(signals_df['signal'].iloc[-1])
+
     def generate_signals(self, df: pd.DataFrame, market_states: list = None) -> pd.DataFrame:
-        """
-        Generate trading signals for entire dataframe
-        
-        MINIMAL FIX: Added 'returns' to market_state (line ~150)
-        """
+        """Generate trading signals for an entire dataframe using canonical S_t."""
         results = []
-        
+
         logger.info(f"Generating signals for {len(df)} bars...")
-        
-        # Pre-calculate returns ONCE (OPTIMIZATION)
-        df_returns = df['close'].pct_change()
-        
-        # Progress bar for large datasets
+
+        builder = CanonicalMarketStateBuilder(df)
         iterator = tqdm(range(len(df)), desc="Generating signals") if len(df) > 10000 else range(len(df))
-        
+
         for idx in iterator:
-            # Prepare market state
             if market_states and idx < len(market_states):
                 market_state = market_states[idx]
             else:
-                # Create market state from df
-                lookback = min(100, idx)
-                recent_returns = df_returns.iloc[max(0, idx-lookback):idx+1].values
-                
-                # ✅ FIX: Added 'returns' key!
-                market_state = {
-                    'returns': recent_returns,  # ← ADDED THIS LINE!
-                    'regime': 'normal',
-                    'crisis_level': 0.0,
-                    'orderbook': None,
-                    'volume': df['volume'].iloc[idx],
-                    'volume_ma': df['volume'].rolling(14).mean().iloc[idx] if idx >= 14 else df['volume'].iloc[idx],
-                    'return_shock': recent_returns[-1] if len(recent_returns) > 0 else 0.0,
-                    'state_features': np.zeros(3),
-                    'portfolio_value': 1.0,
-                    'spread': 0.001,
-                    'atr': 0.02,
-                }
-            
-            # Calculate P_rb
+                market_state = builder.build_for_index(idx)
+
             P_rb, components = self.calculate_pjs(market_state, df, idx)
-            
-            # Generate signal
-            signal = 1 if P_rb > 0.05 else 0
-            
+            signal = 1 if P_rb > self.signal_threshold else 0
+
             results.append({
                 'timestamp': df.index[idx],
                 'P_rb': P_rb,
                 'signal': signal,
                 **components
             })
-        
+
         results_df = pd.DataFrame(results)
         results_df.set_index('timestamp', inplace=True)
-        
+
         logger.info(f"Generated {results_df['signal'].sum()} signals (out of {len(df)} bars)")
-        
+
         return results_df
 
 

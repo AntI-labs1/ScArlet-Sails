@@ -1,0 +1,41 @@
+model2:
+  coin: "BTC"
+  timeframe: "15m"
+  data_dir: "data/features"
+  train_start: "2020-01-01"
+  train_end: "2023-01-01"
+  val_end: "2024-01-01"
+  test_end: "2099-01-01"
+  horizon_bars: 4
+  target_type: "fee_ret"  # raw_ret | fee_ret | rapnl
+  output_path: "models/xgboost_v3_btc_15m.json"
+  min_train_samples: 1000
+  min_val_samples: 200
+  xgboost_params:
+    max_depth: 4
+    learning_rate: 0.05
+    n_estimators: 500
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 5
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    early_stopping_rounds: 50
+
+auto_retrain:
+  enabled: true
+  rolling_months: 18
+
+costs:
+  commission: 0.001
+  slippage: 0.0005
+
+backtest:
+  commission: 0.001
+  slippage: 0.0005
+  take_profit: 0.02
+  stop_loss: 0.01
+  cooldown_bars: 10
+  max_hold_bars: 96
+  threshold_grid: [0.5, 0.6, 0.7, 0.8, 0.9]
+  max_dd_pct: 20

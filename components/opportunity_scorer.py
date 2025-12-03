@@ -38,9 +38,9 @@ class OpportunityScorer:
         self.config = config or {}
         
         # Component weights (default from AI specification)
-        self.w_vol = self.config.get('w_vol', 0.40)
-        self.w_liq = self.config.get('w_liq', 0.35)
-        self.w_micro = self.config.get('w_micro', 0.25)
+        self.w_vol = float(self.config.get('w_vol', 0.40))
+        self.w_liq = float(self.config.get('w_liq', 0.35))
+        self.w_micro = float(self.config.get('w_micro', 0.25))
         
         # Volatility parameters
         self.lambda_params = {
@@ -54,9 +54,15 @@ class OpportunityScorer:
         self.kappa_s = self.config.get('kappa_s', 100)  # Spread sensitivity
         self.kappa_d = self.config.get('kappa_d', 2)    # Depth sensitivity
         
-        # Validate weights
-        assert abs(self.w_vol + self.w_liq + self.w_micro - 1.0) < 1e-6, \
-            "Component weights must sum to 1.0"
+        # Validate/normalize weights so we never crash on bad config
+        weight_sum = self.w_vol + self.w_liq + self.w_micro
+        if weight_sum <= 0:
+            # Fall back to uniform weights if config is broken
+            self.w_vol = self.w_liq = self.w_micro = 1 / 3
+        elif abs(weight_sum - 1.0) > 1e-6:
+            self.w_vol /= weight_sum
+            self.w_liq /= weight_sum
+            self.w_micro /= weight_sum
         
         logger.info(f"OpportunityScorer initialized: w_vol={self.w_vol}, w_liq={self.w_liq}, w_micro={self.w_micro}")
     
@@ -165,9 +171,13 @@ class OpportunityScorer:
         --------
         float : W_liq ∈ [0,1]
         """
-        # Handle missing orderbook
+        # Handle missing orderbook gracefully using volume context
         if orderbook is None or not orderbook:
-            return 0.0
+            if volume_ma <= 0:
+                return 0.0
+            volume_ratio = volume / volume_ma if volume_ma else 0
+            # Map volume ratio into [0,1] with a soft cap
+            return float(np.clip(volume_ratio / 2.0, 0.0, 1.0))
         
         bids = orderbook.get('bids', [])
         asks = orderbook.get('asks', [])
@@ -202,9 +212,16 @@ class OpportunityScorer:
         L_imbalance = 1 - abs(OBI)
         
         # Aggregate with sub-weights
-        w_spread = 0.4
-        w_depth = 0.4
-        w_imbalance = 0.2
+        w_spread = self.config.get('w_spread', 0.4)
+        w_depth = self.config.get('w_depth', 0.4)
+        w_imbalance = self.config.get('w_imbalance', 0.2)
+        weight_sum = w_spread + w_depth + w_imbalance
+        if weight_sum <= 0:
+            w_spread = w_depth = w_imbalance = 1 / 3
+        elif abs(weight_sum - 1.0) > 1e-6:
+            w_spread /= weight_sum
+            w_depth /= weight_sum
+            w_imbalance /= weight_sum
         
         W_liq = w_spread * L_spread + w_depth * L_depth + w_imbalance * L_imbalance
         

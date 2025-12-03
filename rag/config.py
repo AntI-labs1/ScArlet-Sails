@@ -7,6 +7,8 @@ RAG Configuration
 
 import os
 from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import Any, Dict, Optional
 
 # Базовая директория проекта
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -115,3 +117,26 @@ def get_file_path(coin: str, tf: str) -> Path:
         )
     
     return path
+
+
+@dataclass
+class TimeCapsuleSnapshot:
+    """Unified snapshot format for RAG Time Capsule."""
+
+    timestamp: str
+    symbol: str
+    timeframe: str
+    market_state_window: Dict[str, Any]
+    P_rb: Optional[float] = None
+    P_ml: Optional[float] = None
+    P_hyb: Optional[float] = None
+    regime: str = "unknown"
+    pattern_type: str = "unspecified"
+    human_label: Optional[str] = None
+    human_confidence: Optional[float] = None
+    reviewed_by: Optional[str] = None
+    trade_pnl: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

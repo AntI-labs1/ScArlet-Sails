@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 import numpy as np
 
+from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3
+
 logger = logging.getLogger(__name__)
 
 class ModelManager:
@@ -92,10 +94,19 @@ class ModelManager:
             logger.warning("  ⚠️  Crisis classifier not found (will skip)")
             self.models['crisis_classifier'] = None
             return False
-        except Exception as e:
-            logger.error(f"  ❌ Error loading crisis classifier: {e}")
-            self.models['crisis_classifier'] = None
-            return False
+
+    def load_xgboost_v3(self):
+        """Load XGBoost v3 with FeatureSpec enforcement."""
+        cfg = self.config.get('models', {}).get('xgboost_v3', {})
+        model_path = self.project_root / cfg.get('model_path', '')
+
+        if not model_path.exists():
+            raise FileNotFoundError(f"XGBoost v3 model not found at {model_path}")
+
+        strategy = XGBoostMLStrategyV3(str(model_path))
+        self.models['xgboost_v3'] = strategy
+        logger.info(f"  ✅ XGBoost v3 loaded: {model_path.name}")
+        return True
     
     def load_all(self):
         """Load all available models"""
@@ -106,6 +117,12 @@ class ModelManager:
         # Required models
         if not self.load_xgboost():
             success = False
+
+        # Optional: new XGBoost v3
+        try:
+            self.load_xgboost_v3()
+        except Exception as exc:
+            logger.warning(f"  ⚠️  XGBoost v3 not loaded: {exc}")
         
         # Optional models (don't fail if missing)
         self.load_regime_detector()
@@ -168,6 +185,19 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Crisis detection failed: {e}")
             return np.zeros(len(df))
+
+    def predict_xgboost_v3(self, df):
+        """Predict using XGBoost v3 strategy with column validation."""
+
+        strategy: XGBoostMLStrategyV3 = self.models.get('xgboost_v3')
+        if strategy is None:
+            raise ValueError("XGBoost v3 strategy not loaded")
+
+        cfg = self.config.get('models', {}).get('xgboost_v3', {})
+        threshold = cfg.get('threshold', 0.5)
+
+        result = strategy.generate_signals_batch(df, threshold=threshold)
+        return result
     
     def get_model_info(self):
         """Get info about loaded models"""

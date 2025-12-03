@@ -1,0 +1,10 @@
+# Hybrid strategy configuration
+alpha: 0.5
+threshold: 0.55
+use_rl: false
+weights:
+  mode: static
+  alpha: 0.5
+  beta: 0.5
+  window: 50
+  gamma_weight: 0.0

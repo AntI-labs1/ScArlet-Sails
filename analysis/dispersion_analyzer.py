@@ -12,7 +12,7 @@ Tests:
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 from scipy import stats
 from scipy.stats import f_oneway, ks_2samp, pearsonr
 import logging
@@ -23,8 +23,11 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strategies.rule_based_v2 import RuleBasedStrategy
-from strategies.xgboost_ml_v2 import XGBoostMLStrategy
 from strategies.hybrid_v2 import HybridStrategy
+try:  # Prefer v3 when available
+    from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3 as MLStrategy
+except Exception:  # pragma: no cover - fallback
+    from strategies.xgboost_ml_v2 import XGBoostMLStrategy as MLStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -40,59 +43,69 @@ class DispersionAnalyzer:
         self.test_results = {}
         logger.info("DispersionAnalyzer initialized")
 
-    def compute_strategy_vectors(self, df: pd.DataFrame, strategies: Dict[str, any]) -> Dict[str, np.ndarray]:
-        logger.info(f"Computing strategy vectors for {len(df)} bars...")
-        vectors = {}
-        min_length = np.inf
+    def run_strategies_on_df(self, df: pd.DataFrame, strategies: Dict[str, any]) -> pd.DataFrame:
+        """Execute strategies on the same dataset and align outputs."""
+        outputs = {}
         for name, strategy in strategies.items():
-            logger.info(f"  Computing {name}...")
-            if name == 'xgboost_ml':
-                df_dict = {
-                    '15m': df,
-                    '1h': df,
-                    '4h': df,
-                    '1d': df
-                }
-                signals = strategy.generate_signals(df_dict)
-            elif name == 'hybrid':
-                df_dict = {
-                    '15m': df,
-                    '1h': df,
-                    '4h': df,
-                    '1d': df
-                }
-                signals = strategy.generate_signals(df, df_dict)
+            logger.info(f"Running strategy {name} for dispersion alignment")
+            outputs[name] = strategy.generate_signals(df)
+
+        common_index = None
+        for sig_df in outputs.values():
+            if common_index is None:
+                common_index = sig_df.index
             else:
-                signals = strategy.generate_signals(df)
+                common_index = common_index.intersection(sig_df.index)
 
-            # Адаптация названия столбцов
-            if name == 'rule_based' and 'P_rb' in signals.columns:
-                signals['P_rule_based'] = signals['P_rb']
-            if name == 'xgboost_ml' and 'P_ml' in signals.columns:
-                signals['P_xgboost_ml'] = signals['P_ml']
-            if name == 'hybrid' and 'P_hyb' in signals.columns:
-                signals['P_hybrid'] = signals['P_hyb']
-            if name == 'dqn_rl' and 'value' in signals.columns:
-                signals['P_dqn_rl'] = signals['value']
+        combined = pd.DataFrame(index=common_index)
+        if 'rule_based' in outputs:
+            combined['P_rb'] = outputs['rule_based'].loc[common_index, 'P_rb']
+            combined['signal_rb'] = outputs['rule_based'].loc[common_index, 'signal']
+        if 'xgboost_ml' in outputs:
+            col = 'P_ml' if 'P_ml' in outputs['xgboost_ml'].columns else 'ml_proba'
+            combined['P_ml'] = outputs['xgboost_ml'].loc[common_index, col]
+            combined['signal_ml'] = outputs['xgboost_ml'].loc[common_index, 'signal']
+        if 'hybrid' in outputs:
+            combined['P_hyb'] = outputs['hybrid'].loc[common_index, 'P_hyb']
+            combined['signal_hyb'] = outputs['hybrid'].loc[common_index, 'signal']
 
-            print(f"DEBUG {name}: columns={list(signals.columns)}")
-            print(f"DEBUG {name} head:\n{signals.head()}")
+        combined.dropna(how='all', inplace=True)
+        return combined
 
-            col_name = f'P_{name}'
-            if col_name in signals.columns and not signals[col_name].isnull().all():
-                vectors[name] = signals[col_name].dropna().values
-                logger.info(f"{name}: {len(vectors[name])} values computed")
-                min_length = min(min_length, len(vectors[name]))
-            else:
-                logger.warning(f"{name}: нет сигнала {col_name} или все значения NaN — заполняю NaN")
-                vectors[name] = np.full(len(df), np.nan)
+    def compute_strategy_vectors(
+        self,
+        df: pd.DataFrame,
+        strategies: Dict[str, any],
+        combined_signals: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, np.ndarray]:
+        logger.info(f"Computing strategy vectors for {len(df)} bars...")
+        combined = combined_signals if combined_signals is not None else self.run_strategies_on_df(df, strategies)
+        vectors = {}
+        if 'P_rb' in combined:
+            vectors['rule_based'] = combined['P_rb'].values
+        if 'P_ml' in combined:
+            vectors['xgboost_ml'] = combined['P_ml'].values
+        if 'P_hyb' in combined:
+            vectors['hybrid'] = combined['P_hyb'].values
 
-        print("VECTORS FINAL KEYS:", list(vectors.keys()))
-        for name in vectors:
-            if len(vectors[name]) > min_length:
-                vectors[name] = vectors[name][:int(min_length)]
+        min_length = min((len(v) for v in vectors.values()), default=0)
+        for name in list(vectors.keys()):
+            vectors[name] = vectors[name][:min_length]
         self.strategy_vectors = vectors
         return vectors
+
+    def compute_signal_correlations(self, signals_df: pd.DataFrame) -> pd.DataFrame:
+        """Correlation matrix for binary trade decisions."""
+        signal_cols = [c for c in ['signal_rb', 'signal_ml', 'signal_hyb'] if c in signals_df.columns]
+        if not signal_cols:
+            return pd.DataFrame()
+        aligned = signals_df[signal_cols].dropna()
+        if aligned.empty:
+            return pd.DataFrame()
+        corr = aligned.astype(float).corr()
+        self.test_results['signal_correlations'] = corr
+        logger.info("Binary signal correlation matrix:\n%s", corr)
+        return corr
 
     def test_anova(self, vectors: Dict[str, np.ndarray]) -> Dict:
         logger.info("Running ANOVA test...")
@@ -244,19 +257,23 @@ class DispersionAnalyzer:
         logger.info("="*80)
         logger.info("DISPERSION ANALYSIS - FULL RUN")
         logger.info("="*80)
-        vectors = self.compute_strategy_vectors(df, strategies)
+        combined_signals = self.run_strategies_on_df(df, strategies)
+        vectors = self.compute_strategy_vectors(df, strategies, combined_signals)
         summary = self.generate_summary_statistics(vectors)
         anova_result = self.test_anova(vectors)
         ks_results = self.test_kolmogorov_smirnov(vectors)
         corr_matrix = self.compute_correlations(vectors)
+        binary_corr = self.compute_signal_correlations(combined_signals)
         var_decomp = self.variance_decomposition(vectors)
         effect_sizes = self.compute_effect_sizes(vectors)
         all_results = {
+            'signals': combined_signals,
             'vectors': vectors,
             'summary_statistics': summary,
             'anova': anova_result,
             'kolmogorov_smirnov': ks_results,
             'correlation_matrix': corr_matrix,
+            'signal_correlations': binary_corr,
             'variance_decomposition': var_decomp,
             'effect_sizes': effect_sizes
         }

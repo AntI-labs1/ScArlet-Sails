@@ -10,12 +10,47 @@ Author: STAR_ANT + Claude Sonnet 4.5
 Date: November 17, 2025
 """
 
+import logging
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Optional
-import logging
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_price_features(close_window: pd.Series) -> Dict[str, float]:
+    """Convert recent prices to stable, leak-free features."""
+    if close_window is None or len(close_window) < 2:
+        return {'latest_ret': 0.0, 'mean_ret': 0.0, 'vol': 0.0, 'trend': 0.0, 'rel_price': 0.0}
+
+    log_returns = np.log(close_window).diff().dropna()
+    if log_returns.empty:
+        return {'latest_ret': 0.0, 'mean_ret': 0.0, 'vol': 0.0, 'trend': 0.0, 'rel_price': 0.0}
+
+    latest_ret = float(log_returns.iloc[-1])
+    mean_ret = float(log_returns.mean())
+    vol = float(log_returns.std())
+    trend = float((close_window.iloc[-1] - close_window.iloc[0]) / close_window.iloc[0])
+    rel_price = float(close_window.iloc[-1] / close_window.mean() - 1)
+    return {
+        'latest_ret': latest_ret,
+        'mean_ret': mean_ret,
+        'vol': vol,
+        'trend': trend,
+        'rel_price': rel_price,
+    }
+
+
+def normalize_volume_features(volume_window: pd.Series) -> Dict[str, float]:
+    """Return z-scored volume features to stabilize RL inputs."""
+    if volume_window is None or len(volume_window) < 2:
+        return {'z_vol': 0.0, 'vol_mean': 0.0, 'vol_std': 1.0}
+    mean = float(volume_window.mean())
+    std = float(volume_window.std())
+    std = std if std > 0 else 1.0
+    z_vol = float((volume_window.iloc[-1] - mean) / std)
+    return {'z_vol': z_vol, 'vol_mean': mean, 'vol_std': std}
 
 
 class TradingEnvironment:
@@ -256,61 +291,60 @@ class TradingEnvironment:
         
         # Initialize state array
         state = np.zeros(self.state_dim, dtype=np.float32)
-        
+
         try:
-            # Price features (indices 0-4)
-            close = self.df['close'].iloc[max(0, self.current_step-20):self.current_step+1]
-            
-            if len(close) >= 2:
-                returns = close.pct_change().dropna()
-                
-                if len(returns) > 0:
-                    state[0] = float(returns.iloc[-1])  # Latest return
-                    state[1] = float(returns.mean())     # Mean return
-                    state[2] = float(returns.std())      # Volatility
-                    state[3] = float((close.iloc[-1] - close.iloc[0]) / close.iloc[0])  # Trend
-                    state[4] = float(close.iloc[-1] / close.mean() - 1)  # Relative price
-            
+            # Price and volume windows
+            close = self.df['close'].iloc[max(0, self.current_step - 20):self.current_step + 1]
+            volume = self.df['volume'].iloc[max(0, self.current_step - 20):self.current_step + 1]
+
+            price_feats = normalize_price_features(close)
+            vol_feats = normalize_volume_features(volume)
+
+            state[0] = price_feats['latest_ret']
+            state[1] = price_feats['mean_ret']
+            state[2] = price_feats['vol']
+            state[3] = price_feats['trend']
+            state[4] = price_feats['rel_price']
+
             # Portfolio features (indices 5-8)
             current_price = float(self.df.loc[self.current_step, 'close'])
-            
+
             state[5] = float(self.position)
-            
+
             if self.position > 0 and self.entry_price > 0:
                 state[6] = float((current_price - self.entry_price) / self.entry_price)  # Unrealized PnL
             else:
                 state[6] = 0.0
-            
+
             state[7] = float((self.equity - 100000) / 100000)  # Equity change
-            
+
             if self.peak_equity > 0:
                 state[8] = float((self.peak_equity - self.equity) / self.peak_equity)  # Drawdown
             else:
                 state[8] = 0.0
-            
+
             # Regime features (indices 9-11) - one-hot encoded
-            if len(close) > 1 and len(returns) > 0:
-                volatility = float(returns.std())
-                
-                if volatility < 0.015:
-                    state[9:12] = [1.0, 0.0, 0.0]  # Low vol
-                elif volatility < 0.03:
-                    state[9:12] = [0.0, 1.0, 0.0]  # Normal vol
-                else:
-                    state[9:12] = [0.0, 0.0, 1.0]  # High vol
+            volatility = abs(price_feats['vol'])
+            if volatility < 0.015:
+                state[9:12] = [1.0, 0.0, 0.0]  # Low vol
+            elif volatility < 0.03:
+                state[9:12] = [0.0, 1.0, 0.0]  # Normal vol
             else:
-                state[9:12] = [0.0, 1.0, 0.0]  # Default to normal
-            
+                state[9:12] = [0.0, 0.0, 1.0]  # High vol
+
+            # Blend in normalized volume (z-score) into volatility slot for richer context
+            state[2] += vol_feats['z_vol']
+
             # Clip to reasonable bounds
             state = np.clip(state, -10.0, 10.0)
-            
+
             # Replace any NaN or Inf
             state = np.nan_to_num(state, nan=0.0, posinf=10.0, neginf=-10.0)
-        
+
         except Exception as e:
             logger.warning(f"Error computing state at step {self.current_step}: {e}")
             state = np.zeros(self.state_dim, dtype=np.float32)
-        
+
         return state.astype(np.float32)
     
     def get_episode_stats(self) -> Dict:

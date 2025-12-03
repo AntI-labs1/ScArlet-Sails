@@ -28,10 +28,15 @@ class Trade:
     pnl_pct: float = 0.0
     commission: float = 0.0
     slippage: float = 0.0
-    
+
     strategy: str = 'unknown'
     coin: str = 'unknown'
     timeframe: str = 'unknown'
+
+    P_rb: float = 0.0
+    P_ml: float = 0.0
+    P_hyb: float = 0.0
+    regime: str = 'unknown'
     
     signal_strength: float = 0.0
     stop_loss: Optional[float] = None
@@ -86,6 +91,10 @@ class Trade:
             'strategy': self.strategy,
             'coin': self.coin,
             'timeframe': self.timeframe,
+            'P_rb': self.P_rb,
+            'P_ml': self.P_ml,
+            'P_hyb': self.P_hyb,
+            'regime': self.regime,
             'is_winner': self.is_winner,
         }
 
@@ -111,6 +120,10 @@ class TradeLogger:
         signal_strength: float = 0.0,
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
+        P_rb: float = 0.0,
+        P_ml: float = 0.0,
+        P_hyb: float = 0.0,
+        regime: str = 'unknown',
     ) -> Trade:
         """Open a new trade."""
         trade = Trade(
@@ -126,6 +139,10 @@ class TradeLogger:
             signal_strength=signal_strength,
             stop_loss=stop_loss,
             take_profit=take_profit,
+            P_rb=P_rb,
+            P_ml=P_ml,
+            P_hyb=P_hyb,
+            regime=regime,
         )
         self._current_trade = trade
         return trade

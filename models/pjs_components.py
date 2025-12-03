@@ -229,6 +229,20 @@ class CostCalculator:
         """
         return self.calculate_entry_cost(use_maker) + self.calculate_exit_cost(use_maker)
 
+    @classmethod
+    def from_config(cls, config: Dict) -> "CostCalculator":
+        """Instantiate calculator from nested strategy config."""
+        fees = config.get("fees", {}) if config else {}
+        return cls(
+            maker_fee=fees.get("maker", config.get("maker_fee", 0.001)),
+            taker_fee=fees.get("taker", config.get("taker_fee", 0.001)),
+            slippage=config.get("slippage", 0.0005),
+        )
+
+    def get_round_trip_cost(self, use_maker: bool = True) -> float:
+        """Convenience wrapper mirroring terminology in architecture docs."""
+        return self.calculate_round_trip_cost(use_maker)
+
     def get_min_profit_threshold(self, use_maker: bool = True) -> float:
         """
         Get minimum profit threshold to break even.
@@ -334,6 +348,38 @@ class RiskPenaltyCalculator:
             penalties['ood_uncertainty'] = 0.0
 
         return total, penalties
+
+
+def compute_risk_penalty_from_market_state(
+    market_state: Dict,
+    config: Optional[Dict] = None,
+) -> float:
+    """Thin wrapper to create RiskPenaltyCalculator and compute penalty.
+
+    The function expects the canonical market_state fields produced by
+    CanonicalMarketStateBuilder/RuleBasedStrategy and keeps defaults safe
+    when some features are missing.
+    """
+
+    rpc_cfg = (config or {}).get("risk", {}) if config else {}
+    calculator = RiskPenaltyCalculator(
+        volatility_threshold=rpc_cfg.get("volatility_threshold", 0.05),
+        volume_threshold=rpc_cfg.get("volume_threshold", 0.5),
+        crisis_threshold=rpc_cfg.get("crisis_threshold", 3),
+        ood_threshold=rpc_cfg.get("ood_threshold", 0.5),
+    )
+
+    atr_pct = market_state.get("atr", 0.0) / market_state.get("spread", 1) if market_state.get("spread", 1) != 0 else market_state.get("atr", 0.0)
+    volume_ma = market_state.get("volume_ma", 1)
+    volume_ratio = (market_state.get("volume", 0) / volume_ma) if volume_ma else 0
+
+    total_penalty, _ = calculator.calculate_penalty(
+        atr_pct=atr_pct,
+        volume_ratio=volume_ratio,
+        crisis_level=market_state.get("crisis_level", 0),
+        ood_ratio=market_state.get("ood_ratio", 0.0),
+    )
+    return total_penalty
 
 
 # ============================================================

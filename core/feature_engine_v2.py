@@ -5,7 +5,11 @@ Multi-timeframe feature engineering matching xgboost_normalized_model.json
 """
 import pandas as pd
 import numpy as np
+import json
 import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Sequence
 from sklearn.preprocessing import StandardScaler
 import joblib
 
@@ -180,7 +184,10 @@ class FeatureEngine:
             features[f'{tf_prefix}_price_to_EMA21_dup'] = features[f'{tf_prefix}_price_to_EMA21']
             features[f'{tf_prefix}_price_to_SMA50_dup'] = features[f'{tf_prefix}_price_to_SMA50']
         
-        return features
+        # Shift all engineered features by 1 to ensure the model only sees fully
+        # closed bars (protects against look-ahead). NaNs are handled upstream
+        # via forward-fill/zero-fill during assembly.
+        return features.shift(1)
     
     def _calculate_rsi(self, series, period=14):
         """Calculate RSI"""
@@ -234,3 +241,114 @@ class FeatureEngine:
         """Load scaler from file"""
         self.scaler = joblib.load(path)
         logger.info(f"  📂 Scaler loaded: {path}")
+
+
+class CanonicalMarketStateBuilder:
+    """Constructs canonical market states S_t from feature-enriched dataframes."""
+
+    def __init__(self, df: pd.DataFrame, regime_column: str = "regime"):
+        self.df = df.sort_index()
+        self.regime_column = regime_column
+
+    def _window_slice(self, idx: int, lookback: int = 100) -> pd.DataFrame:
+        start = max(0, idx - lookback + 1)
+        return self.df.iloc[start: idx + 1]
+
+    def build_for_index(self, idx: int) -> Dict:
+        if idx < 0 or idx >= len(self.df):
+            raise IndexError("Index out of bounds for market state builder")
+
+        window = self._window_slice(idx)
+        prices = window["close"]
+        returns = prices.pct_change().dropna()
+
+        atr_series = window.get("atr")
+        atr_value = (
+            float(atr_series.iloc[-1])
+            if atr_series is not None and not atr_series.isna().iloc[-1]
+            else float(prices.pct_change().abs().rolling(14).mean().iloc[-1]) if len(prices) > 14 else 0.0
+        )
+
+        volume = float(window["volume"].iloc[-1])
+        volume_ma = float(window["volume"].rolling(14).mean().iloc[-1]) if len(window) >= 14 else volume
+
+        regime = window[self.regime_column].iloc[-1] if self.regime_column in window.columns else "normal"
+        spread_series = window.get("spread", pd.Series([0.0], index=window.index))
+        spread_value = float(spread_series.iloc[-1])
+
+        base_cols = [col for col in ["open", "high", "low", "close", "volume"] if col in window.columns]
+        state_features = window.drop(columns=base_cols).iloc[-1].fillna(0).values
+
+        return {
+            "returns": returns.values if len(returns) > 0 else np.array([]),
+            "return_shock": float(returns.iloc[-1]) if len(returns) > 0 else 0.0,
+            "atr": atr_value,
+            "spread": spread_value,
+            "volume": volume,
+            "volume_ma": volume_ma,
+            "regime": regime,
+            "portfolio_value": 1.0,
+            "drawdown": 0.0,
+            "state_features": state_features,
+            "window_slice": window.copy(),
+        }
+
+
+@dataclass
+class FeatureSpecV3:
+    """Canonical feature specification for Model 2 (74 single-TF features).
+
+    This class centralises the ordered list of feature names used at both
+    training and inference, addressing the historical "feature order" bug.
+    """
+
+    feature_names: List[str]
+
+    @classmethod
+    def from_dataframe(
+        cls,
+        df: pd.DataFrame,
+        target_column: str = "target",
+        drop_columns: Sequence[str] = ("raw_ret", "fee_ret", "rapnl"),
+    ) -> "FeatureSpecV3":
+        """Build a spec from a feature dataframe (drops target/label helpers)."""
+
+        excluded = set([target_column, *drop_columns])
+        names = [c for c in df.columns if c not in excluded]
+        return cls(feature_names=names)
+
+    @property
+    def n_features(self) -> int:
+        return len(self.feature_names)
+
+    def enforce(self, df: pd.DataFrame, raise_on_missing: bool = True) -> pd.DataFrame:
+        """Reorder dataframe columns to match the spec, validating presence."""
+
+        missing = [c for c in self.feature_names if c not in df.columns]
+        if missing and raise_on_missing:
+            raise ValueError(f"Missing required features: {missing}")
+
+        extra = [c for c in df.columns if c not in self.feature_names]
+        if extra:
+            df = df.drop(columns=extra)
+
+        return df[self.feature_names]
+
+    def validate(self, columns: Sequence[str]) -> Dict[str, List[str]]:
+        """Return diagnostic information about missing/extra columns."""
+
+        missing = [c for c in self.feature_names if c not in columns]
+        extra = [c for c in columns if c not in self.feature_names]
+        reordered = [c for c in columns if c in self.feature_names and self.feature_names.index(c) != list(columns).index(c)]
+
+        return {"missing": missing, "extra": extra, "reordered": reordered}
+
+    def to_json(self, path: Path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"feature_names": self.feature_names}, indent=2))
+
+    @classmethod
+    def from_json(cls, path: Path) -> "FeatureSpecV3":
+        data = json.loads(Path(path).read_text())
+        return cls(feature_names=data["feature_names"])

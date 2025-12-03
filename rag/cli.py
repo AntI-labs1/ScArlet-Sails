@@ -15,10 +15,14 @@ Scarlet Sails RAG CLI
 import argparse
 import sys
 import json
+import random
 from pathlib import Path
 
+import pandas as pd
+
+from core.feature_engine_v2 import CanonicalMarketStateBuilder
 from .extractor import PatternExtractor
-from .config import COINS, TIMEFRAMES, PATTERNS_DIR
+from .config import COINS, TIMEFRAMES, PATTERNS_DIR, TimeCapsuleSnapshot
 
 
 def print_banner():
@@ -185,6 +189,62 @@ def cmd_stats(args):
         print(f"      Хороших (>0.3): {good} ({100*good/len(w_box_values):.0f}%)")
 
 
+def cmd_record_pattern(args):
+    """Create a Time Capsule snapshot from a CSV/Parquet bar index."""
+    df = pd.read_csv(args.path) if args.path.endswith(".csv") else pd.read_parquet(args.path)
+    if args.timestamp_column and args.timestamp_column in df.columns:
+        df[args.timestamp_column] = pd.to_datetime(df[args.timestamp_column])
+        df.set_index(args.timestamp_column, inplace=True)
+
+    builder = CanonicalMarketStateBuilder(df)
+    market_state = builder.build_for_index(args.bar_index)
+
+    snapshot = TimeCapsuleSnapshot(
+        timestamp=str(df.index[args.bar_index]),
+        symbol=args.coin,
+        timeframe=args.tf,
+        market_state_window=market_state.get("window_slice", {}).to_dict() if hasattr(market_state.get("window_slice", {}), "to_dict") else {},
+        P_rb=args.P_rb,
+        P_ml=args.P_ml,
+        P_hyb=args.P_hyb,
+        regime=market_state.get("regime", "unknown"),
+        pattern_type=args.pattern_type,
+        human_label=args.label,
+        human_confidence=args.confidence,
+        reviewed_by=None,
+        trade_pnl=None,
+        metadata={"notes": args.notes} if args.notes else None,
+    )
+
+    out_path = PATTERNS_DIR / f"snapshot_{args.coin}_{args.tf}_{args.bar_index}.json"
+    with open(out_path, "w") as f:
+        json.dump(snapshot.to_dict(), f, ensure_ascii=False, indent=2)
+
+    print(f"Saved snapshot → {out_path}")
+
+
+def cmd_sample_for_audit(args):
+    """Sample Time Capsule patterns for quick human audit."""
+    patterns = list(PATTERNS_DIR.glob("*.json"))
+    if not patterns:
+        print("Нет паттернов для аудита.")
+        return
+
+    sample = random.sample(patterns, min(args.n, len(patterns)))
+    results = []
+    for path in sample:
+        with open(path, "r") as f:
+            data = json.load(f)
+        print(f"\nID: {path.stem} | ts={data.get('timestamp', '?')} | regime={data.get('regime', '?')} | P_rb={data.get('P_rb')}")
+        decision = input("Mark [ok/questionable/bad/skip]: ").strip() or "skip"
+        data["audit_tag"] = decision
+        with open(path, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        results.append(decision)
+
+    print(f"\nAudit completed. Tags: {dict(pd.Series(results).value_counts())}")
+
+
 def main():
     """Главная функция CLI."""
     parser = argparse.ArgumentParser(
@@ -199,61 +259,96 @@ def main():
         """
     )
     
-    # Позиционные аргументы (опциональные)
-    parser.add_argument('coin', nargs='?', type=str, help='Монета (BTC, ETH, ...)')
-    parser.add_argument('tf', nargs='?', type=str, choices=TIMEFRAMES, help='Таймфрейм')
-    parser.add_argument('time', nargs='?', type=str, help='Время "YYYY-MM-DD HH:MM"')
-    
-    # Именованные аргументы
-    parser.add_argument('--coin', dest='coin_named', type=str, help='Монета')
-    parser.add_argument('--tf', dest='tf_named', type=str, choices=TIMEFRAMES, help='Таймфрейм')
-    parser.add_argument('--time', dest='time_named', type=str, help='Время')
-    
-    parser.add_argument('--type', default='box_range', help='Тип паттерна (по умолчанию box_range)')
-    parser.add_argument('--direction', '-d', default='long', choices=['long', 'short'], help='Направление')
-    parser.add_argument('--lookback', '-l', type=int, default=48, help='Баров назад для box (по умолчанию 48)')
-    parser.add_argument('--notes', '-n', type=str, help='Заметки')
-    
-    parser.add_argument('--list', action='store_true', help='Показать все паттерны')
-    parser.add_argument('--stats', action='store_true', help='Показать статистику')
-    
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command")
+
+    # Default extract command (backward compatible positional usage)
+    parser_extract = subparsers.add_parser("extract", add_help=False)
+    parser_extract.add_argument('coin', nargs='?', type=str, help='Монета (BTC, ETH, ...)')
+    parser_extract.add_argument('tf', nargs='?', type=str, choices=TIMEFRAMES, help='Таймфрейм')
+    parser_extract.add_argument('time', nargs='?', type=str, help='Время "YYYY-MM-DD HH:MM"')
+    parser_extract.add_argument('--coin', dest='coin_named', type=str, help='Монета')
+    parser_extract.add_argument('--tf', dest='tf_named', type=str, choices=TIMEFRAMES, help='Таймфрейм')
+    parser_extract.add_argument('--time', dest='time_named', type=str, help='Время')
+    parser_extract.add_argument('--type', default='box_range', help='Тип паттерна (по умолчанию box_range)')
+    parser_extract.add_argument('--direction', '-d', default='long', choices=['long', 'short'], help='Направление')
+    parser_extract.add_argument('--lookback', '-l', type=int, default=48, help='Баров назад для box (по умолчанию 48)')
+    parser_extract.add_argument('--notes', '-n', type=str, help='Заметки')
+    parser_extract.add_argument('--list', action='store_true', help='Показать все паттерны')
+    parser_extract.add_argument('--stats', action='store_true', help='Показать статистику')
+
+    # Record pattern command
+    parser_record = subparsers.add_parser("record-pattern")
+    parser_record.add_argument('--path', required=True, help='CSV/Parquet source with features')
+    parser_record.add_argument('--bar-index', type=int, required=True, help='Index of the bar to snapshot')
+    parser_record.add_argument('--coin', required=True, help='Symbol')
+    parser_record.add_argument('--tf', required=True, choices=TIMEFRAMES)
+    parser_record.add_argument('--timestamp-column', default='timestamp', help='Timestamp column name')
+    parser_record.add_argument('--pattern-type', default='manual', help='Pattern type label')
+    parser_record.add_argument('--label', help='Human label')
+    parser_record.add_argument('--confidence', type=float, help='Human confidence (0-1)')
+    parser_record.add_argument('--notes', help='Notes to store')
+    parser_record.add_argument('--P-rb', dest='P_rb', type=float, default=None, help='Optional P_rb score')
+    parser_record.add_argument('--P-ml', dest='P_ml', type=float, default=None, help='Optional P_ml score')
+    parser_record.add_argument('--P-hyb', dest='P_hyb', type=float, default=None, help='Optional P_hyb score')
+
+    # Audit sampler
+    parser_audit = subparsers.add_parser("sample-for-audit")
+    parser_audit.add_argument('--n', type=int, default=20, help='Number of samples to review')
+
+    argv = sys.argv[1:]
+    if argv and argv[0] not in {"extract", "record-pattern", "sample-for-audit", "--help", "-h"} and not argv[0].startswith('-'):
+        argv = ["extract"] + argv
+
+    args = parser.parse_args(argv)
     
     print_banner()
     
     # Обработка команд
-    if args.list:
-        cmd_list(args)
+    if args.command == "record-pattern":
+        cmd_record_pattern(args)
         return
-    
-    if args.stats:
-        cmd_stats(args)
+
+    if args.command == "sample-for-audit":
+        cmd_sample_for_audit(args)
         return
-    
-    # Объединить позиционные и именованные
-    coin = args.coin_named or args.coin
-    tf = args.tf_named or args.tf
-    time = args.time_named or args.time
-    
-    if not all([coin, tf, time]):
-        parser.print_help()
-        print("\n❌ Нужно указать: монету, таймфрейм и время")
-        print("\nПример:")
-        print('   python -m rag.cli BTC 1h "2024-11-26 14:00"')
-        sys.exit(1)
-    
-    # Валидация
-    if coin.upper() not in COINS:
-        print(f"\n❌ Монета {coin} не поддерживается.")
-        print(f"   Доступные: {', '.join(COINS)}")
-        sys.exit(1)
-    
-    # Установить значения
-    args.coin = coin.upper()
-    args.tf = tf
-    args.time = time
-    
-    cmd_extract(args)
+
+    # Default: extract flow
+    if args.command is None:
+        # mimic old positional usage
+        args.command = "extract"
+    if args.command == "extract":
+        if args.list:
+            cmd_list(args)
+            return
+
+        if args.stats:
+            cmd_stats(args)
+            return
+
+        # Объединить позиционные и именованные
+        coin = args.coin_named or getattr(args, 'coin', None)
+        tf = args.tf_named or getattr(args, 'tf', None)
+        time = args.time_named or getattr(args, 'time', None)
+
+        if not all([coin, tf, time]):
+            parser.print_help()
+            print("\n❌ Нужно указать: монету, таймфрейм и время")
+            print("\nПример:")
+            print('   python -m rag.cli BTC 1h "2024-11-26 14:00"')
+            sys.exit(1)
+
+        # Валидация
+        if coin.upper() not in COINS:
+            print(f"\n❌ Монета {coin} не поддерживается.")
+            print(f"   Доступные: {', '.join(COINS)}")
+            sys.exit(1)
+
+        # Установить значения
+        args.coin = coin.upper()
+        args.tf = tf
+        args.time = time
+
+        cmd_extract(args)
 
 
 if __name__ == "__main__":

@@ -10,18 +10,22 @@ Author: STAR_ANT + Claude Sonnet 4.5
 Date: November 24, 2025 (PRODUCTION READY)
 """
 
+import logging
+import os
+import sys
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Optional
-import logging
-import sys
-import os
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from strategies.rule_based_v2 import RuleBasedStrategy
-from strategies.xgboost_ml_v2 import XGBoostMLStrategy
+try:  # Prefer the v3 ML strategy when available
+    from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3 as DefaultMLStrategy
+except Exception:  # pragma: no cover - fallback for environments without v3 model
+    from strategies.xgboost_ml_v2 import XGBoostMLStrategy as DefaultMLStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +37,8 @@ class AdaptiveWeightCalculator:
     
     def __init__(self, config: Dict = None):
         self.config = config or {}
-        
-        self.window = self.config.get('window', 20)
+
+        self.window = self.config.get('window', 50)
         self.gamma_weight = self.config.get('gamma_weight', 0.10)
         
         # Performance tracking
@@ -47,13 +51,16 @@ class AdaptiveWeightCalculator:
         
         logger.info(f"AdaptiveWeightCalculator initialized: window={self.window}, γ_weight={self.gamma_weight}")
     
-    def update_performance(self, rb_return: float, ml_return: float):
-        """Update performance tracking"""
-        self.rb_returns.append(rb_return)
-        self.ml_returns.append(ml_return)
-        
+    def update_performance(self, rb_return: Optional[float], ml_return: Optional[float]):
+        """Update performance tracking with realized PnL returns."""
+        if rb_return is not None:
+            self.rb_returns.append(rb_return)
+        if ml_return is not None:
+            self.ml_returns.append(ml_return)
+
         if len(self.rb_returns) > self.window:
             self.rb_returns = self.rb_returns[-self.window:]
+        if len(self.ml_returns) > self.window:
             self.ml_returns = self.ml_returns[-self.window:]
     
     def calculate_sharpe(self, returns: list) -> float:
@@ -72,7 +79,7 @@ class AdaptiveWeightCalculator:
     
     def calculate_weights(self) -> Tuple[float, float]:
         """Calculate adaptive weights α(t), β(t)"""
-        if len(self.rb_returns) < 5:
+        if len(self.rb_returns) < 5 or len(self.ml_returns) < 5:
             return self.default_alpha, self.default_beta
         
         # Calculate Sharpe ratios
@@ -104,32 +111,6 @@ class AdaptiveWeightCalculator:
         return float(alpha), float(beta)
 
 
-class RLComponentPlaceholder:
-    """
-    Placeholder for RL component
-    Phase 4: Replace with DQN
-    """
-    
-    def __init__(self, config: Dict = None):
-        self.config = config or {}
-        self.gamma = self.config.get('gamma', 0.95)
-        logger.info("RLComponentPlaceholder initialized (Phase 4: replace with DQN)")
-    
-    def get_state_value(self, state: Dict) -> float:
-        """Placeholder V(S) calculation"""
-        regime = state.get('regime', 'normal')
-        crisis_level = state.get('crisis_level', 0.0)
-        
-        if regime == 'crisis' or crisis_level > 0.5:
-            return 0.01
-        return 0.05
-    
-    def calculate_rl_component(self, state: Dict) -> float:
-        """Calculate γ·𝔼[V_future(S)]"""
-        V_future = self.get_state_value(state)
-        return self.gamma * V_future
-
-
 class HybridStrategy:
     """
     Hybrid Trading Strategy
@@ -138,41 +119,57 @@ class HybridStrategy:
     P_hyb(S) = α(t)·P_rb(S) + β(t)·P_ml(S) + γ·𝔼[V_future(S)]
     """
     
-    def __init__(self, config: Dict = None, 
+    def __init__(self, config: Dict = None,
                  rb_strategy: RuleBasedStrategy = None,
-                 ml_strategy: XGBoostMLStrategy = None):
+                 ml_strategy: Optional[object] = None,
+                 rl_advisor: Optional[object] = None):
         self.config = config or {}
-        
+
         # Initialize strategies
         self.rb_strategy = rb_strategy or RuleBasedStrategy(self.config.get('rule_based', {}))
-        self.ml_strategy = ml_strategy or XGBoostMLStrategy(self.config.get('xgboost_ml', {}))
-        
-        # Initialize adaptive weights
-        self.weight_calculator = AdaptiveWeightCalculator(self.config.get('weights', {}))
-        
-        # Initialize RL component
-        self.rl_component = RLComponentPlaceholder(self.config.get('rl', {}))
-        
-        # Current weights
-        self.alpha = self.weight_calculator.default_alpha
-        self.beta = self.weight_calculator.default_beta
+        self.ml_strategy = ml_strategy or DefaultMLStrategy(self.config.get('xgboost_ml', {}))
+
+        # Weighting configuration
+        self.weights_config = self.config.get('weights', {})
+        self.mode = self.weights_config.get('mode', 'static')
+        self.weight_calculator = AdaptiveWeightCalculator(self.weights_config)
+
+        static_alpha = self.weights_config.get('alpha', self.weight_calculator.default_alpha)
+        static_beta = self.weights_config.get('beta', 1 - static_alpha)
+        self.alpha = float(static_alpha)
+        self.beta = float(static_beta)
         self.gamma_weight = self.weight_calculator.gamma_weight
-        
-        logger.info(f"HybridStrategy initialized: α={self.alpha:.2f}, β={self.beta:.2f}, γ_weight={self.gamma_weight:.2f}")
+
+        # RL controls
+        self.use_rl = bool(self.config.get('use_rl', False))
+        self.threshold = float(self.config.get('threshold', 0.5))
+        self.rl_component = rl_advisor if self.use_rl else None
+
+        logger.info(
+            f"HybridStrategy initialized: mode={self.mode}, α={self.alpha:.2f}, β={self.beta:.2f}, "
+            f"γ_weight={self.gamma_weight:.2f}, use_rl={self.use_rl}"
+        )
     
-    def calculate_pjs(self, rb_result: Tuple[float, Dict], 
+    def calculate_pjs(self, rb_result: Tuple[float, Dict],
                            ml_result: Tuple[float, Dict],
                            market_state: Dict) -> Tuple[float, Dict]:
         """Calculate P_hyb(S)"""
         P_rb, rb_components = rb_result
         P_ml, ml_components = ml_result
         
-        # Calculate adaptive weights
-        self.alpha, self.beta = self.weight_calculator.calculate_weights()
-        
+        # Calculate weights
+        if self.mode == 'adaptive':
+            self.alpha, self.beta = self.weight_calculator.calculate_weights()
+        else:
+            # Static mode keeps configured weights
+            self.alpha = float(self.weights_config.get('alpha', self.alpha))
+            self.beta = float(self.weights_config.get('beta', 1 - self.alpha))
+
         # Calculate RL component
-        rl_value = self.rl_component.calculate_rl_component(market_state)
-        
+        rl_value = 0.0
+        if self.use_rl and self.rl_component is not None:
+            rl_value = float(getattr(self.rl_component, 'calculate_rl_component', lambda s: 0.0)(market_state))
+
         # Calculate P_hyb
         P_hyb = self.alpha * P_rb + self.beta * P_ml + rl_value
         
@@ -209,9 +206,8 @@ class HybridStrategy:
         
         # Generate Rule-Based signals
         rb_signals = self.rb_strategy.generate_signals(df, market_states)
-        
+
         # Generate ML signals
-        # NOTE: ML strategy now works with single DataFrame (74 features)
         ml_signals = self.ml_strategy.generate_signals(df, market_states)
         
         # Ensure same index
@@ -256,11 +252,13 @@ class HybridStrategy:
                 market_state
             )
             
-            # Update performance
-            self.weight_calculator.update_performance(P_rb, P_ml)
-            
+            # Update performance with realized returns if available
+            rb_perf = df.loc[idx, 'rb_return'] if 'rb_return' in df.columns else None
+            ml_perf = df.loc[idx, 'ml_return'] if 'ml_return' in df.columns else None
+            self.weight_calculator.update_performance(rb_perf, ml_perf)
+
             # Generate signal
-            signal = 1 if P_hyb > -0.5 else 0
+            signal = 1 if P_hyb > self.threshold else 0
             
             results.append({
                 'timestamp': idx,
@@ -275,10 +273,32 @@ class HybridStrategy:
         
         results_df = pd.DataFrame(results)
         results_df.set_index('timestamp', inplace=True)
-        
+
         logger.info(f"Generated {results_df['signal'].sum()} hybrid signals (out of {len(results_df)} bars)")
-        
+
         return results_df
+
+    def generate_signal(self, df: pd.DataFrame, market_states: list = None) -> int:
+        """Generate a single hybrid signal with graceful fallbacks."""
+        if df is None or df.empty:
+            raise ValueError("Input dataframe is empty; cannot generate hybrid signal")
+
+        has_features = getattr(self.ml_strategy, 'has_required_features', lambda _: True)(df)
+        if has_features:
+            signals_df = self.generate_signals(df, market_states)
+            if signals_df.empty:
+                raise ValueError("No hybrid signals generated from input dataframe")
+            return int(signals_df['signal'].iloc[-1])
+
+        logger.warning("HybridStrategy falling back to simplified aggregation (missing ML features)")
+        rb_signal = self.rb_strategy.generate_signal(df, market_states)
+        ml_signal = self.ml_strategy.generate_signal(df, market_states)
+
+        alpha, beta = self.weight_calculator.calculate_weights()
+        weighted_score = alpha * rb_signal + beta * ml_signal
+        threshold = 0.5 * (alpha + beta)
+
+        return 1 if weighted_score > threshold else 0
 
 
 # Testing

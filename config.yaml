@@ -35,6 +35,11 @@ models:
     scaler_path: "models/xgboost_normalized_scaler.pkl"
     threshold: 0.46
     n_features: 31
+
+  xgboost_v3:
+    model_path: "models/xgboost_v3_btc_15m.json"
+    threshold: 0.7
+    n_features: 74
   
   regime_detector:
     model_path: "models/regime_detector.py"
