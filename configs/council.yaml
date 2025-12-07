@@ -1,0 +1,17 @@
+council:
+  agents:
+    pattern_detector:
+      enabled: true
+      model: "local_llm"  # or "gpt-4-vision"
+    risk_assessor:
+      enabled: false  # Phase 2
+    contrarian:
+      enabled: false  # Phase 2
+
+  discussion:
+    max_rounds: 3
+    consensus_threshold: 0.7
+
+  human_override:
+    enabled: true
+    timeout_seconds: 300
