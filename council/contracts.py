@@ -631,32 +631,3 @@ def validate_recommendation(rec: CouncilRecommendation, constraints: RiskConstra
     
     return violations
 ```
-
----
-
-## ИНСТРУКЦИЯ: КАК ВСТАВИТЬ В GITHUB ВРУЧНУЮ
-
-### Способ 1: Через веб-интерфейс GitHub
-
-1. Открой https://github.com/AntI-labs1/ScArlet-Sails
-
-2. Перейди в папку `council/`
-
-3. Нажми **Add file** → **Create new file**
-
-4. В поле имени файла напиши: `contracts.py`
-
-5. Скопируй весь код выше и вставь в редактор
-
-6. Внизу страницы:
-   - Commit message: `feat: Add Council contracts (Stage 0/1/2/3)`
-   - Description: 
-```
-   Strict type definitions for Council decision-making:
-   - Stage 0: CouncilContext (market, position, constraints, quant signals, RAG)
-   - Stage 1: AgentOpinion (action, confidence, justification)
-   - Stage 2: AgentReview (peer review, risk flags)
-   - Stage 3: CouncilRecommendation (final aggregated decision)
-   - HumanResponse and TradeLogEntry for audit trail
-   
-   All agents must return data in these formats. No exceptions.
