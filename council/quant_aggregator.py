@@ -469,36 +469,3 @@ def create_quant_aggregator_with_strategies(
             logger.error(f"Error initializing Hybrid strategy: {e}")
     
     return aggregator
-```
-
----
-
-## ИНСТРУКЦИЯ: ВСТАВИТЬ В GITHUB
-
-### Через веб-интерфейс:
-
-1. Открой https://github.com/AntI-labs1/ScArlet-Sails
-
-2. Перейди в папку `council/`
-
-3. **Add file** → **Create new file**
-
-4. Имя файла: `quant_aggregator.py`
-
-5. Вставь код выше
-
-6. Commit message:
-```
-feat: Add Quant Aggregator (Phase 1.2)
-```
-
-7. Description:
-```
-Bridge between existing strategies and Council contracts.
-
-- Calls P_rb, P_ml, P_hyb strategies
-- Aggregates into QuantSignals
-- Calculates agreement score
-- Converts to AgentOpinion for Council Stage 1
-- Factory function for easy setup
-- Does NOT modify existing strategy logic
