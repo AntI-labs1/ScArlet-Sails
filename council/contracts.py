@@ -383,39 +383,51 @@ class AgentReview:
 @dataclass
 class CouncilRecommendation:
     """
-    STAGE 3: Final aggregated recommendation from Council.
+    Stage 3: Final Council recommendation.
     
-    This is what the Human sees and decides on.
+    Aggregated from all agent opinions and reviews.
+    This is what the human sees and decides on.
     """
-    # Final decision
+    # Required fields (no defaults) - MUST BE FIRST
     final_action: ActionType
     final_position_size_pct: float
     aggregate_confidence: float
-    
-    # Risk assessment
     risk_level: SeverityLevel
+    rationale: str  # Moved up - no default
+    
+    # Optional fields (with defaults) - MUST BE AFTER
     sl_pct: Optional[float] = None
     tp_pct: Optional[float] = None
-    
-    # Explanation
-    rationale: str             # Summary of why this decision
-    dissent_summary: Optional[str] = None  # Any disagreements
-    
-    # Constraint violations (if any forced adjustments)
-    violated_constraints: List[str] = field(default_factory=list)
-    
-    # Audit trail
-    opinions_used: List[AgentOpinion] = field(default_factory=list)
-    reviews: List[AgentReview] = field(default_factory=list)
-    
-    # Metadata
+    dissent_summary: Optional[str] = None
+    violated_constraints: Optional[List[str]] = None
+    opinions_used: Optional[List[AgentOpinion]] = None
+    reviews: Optional[List[AgentReview]] = None
     request_id: str = ""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    
+    def to_human_display(self) -> str:
+        """Format for human display in CLI."""
+        lines = [
+            f"Action: {self.final_action.value.upper()}",
+            f"Size: {self.final_position_size_pct:.2f}%",
+            f"Confidence: {self.aggregate_confidence:.0%}",
+            f"Risk: {self.risk_level.name}",
+        ]
+        
+        if self.sl_pct:
+            lines.append(f"Stop Loss: -{self.sl_pct}%")
+        if self.tp_pct:
+            lines.append(f"Take Profit: +{self.tp_pct}%")
+        
+        lines.append(f"Rationale: {self.rationale}")
+        
+        if self.dissent_summary:
+            lines.append(f"Dissent: {self.dissent_summary}")
+        
+        return "\n".join(lines)
     
     def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
         return {
-            "request_id": self.request_id,
-            "timestamp": self.timestamp.isoformat(),
             "final_action": self.final_action.value,
             "final_position_size_pct": self.final_position_size_pct,
             "aggregate_confidence": self.aggregate_confidence,
@@ -425,8 +437,7 @@ class CouncilRecommendation:
             "rationale": self.rationale,
             "dissent_summary": self.dissent_summary,
             "violated_constraints": self.violated_constraints,
-            "opinions_count": len(self.opinions_used),
-            "reviews_count": len(self.reviews),
+            "request_id": self.request_id,
         }
     
     def to_json(self) -> str:
