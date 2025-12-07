@@ -20,33 +20,33 @@ The system is built around **Council of Agents** architecture, where:
 ## Architecture
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     DATA & STATE LAYER                       │
+│                     DATA & STATE LAYER                      │
 │  Market data → Feature Engine → Canonical State S(t)        │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   QUANT STRATEGIES LAYER                     │
+│                   QUANT STRATEGIES LAYER                    │
 │  S(t) → P_rb (Rule-Based)                                   │
 │  S(t) → P_ml (XGBoost ML)                                   │
 │  S(t) → P_hyb (Hybrid + RL)                                 │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                    COUNCIL & RAG LAYER                       │
+│                    COUNCIL & RAG LAYER                      │
 │  [Quant Signals] + [S(t)] + [RAG Context]                   │
-│           ↓                                                  │
+│           ↓                                                 │
 │  LLM Council: Pattern Detection → Risk Assessment           │
-│           ↓                                                  │
-│  Structured Recommendation                                   │
+│           ↓                                                 │
+│  Structured Recommendation                                  │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   HUMAN DECISION LAYER                       │
+│                   HUMAN DECISION LAYER                      │
 │  Recommendation → Human Review → ACCEPT/MODIFY/REJECT       │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   EXECUTION & RISK LAYER                     │
+│                   EXECUTION & RISK LAYER                    │
 │  Position sizing, SL/TP, Kill-switch, Trade logging         │
 └─────────────────────────────────────────────────────────────┘
 ```
