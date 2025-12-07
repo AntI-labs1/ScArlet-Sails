@@ -643,4 +643,3 @@ def create_pattern_detector(
         )
     else:
         return RuleBasedPatternDetector()
-```
