@@ -630,4 +630,3 @@ def validate_recommendation(rec: CouncilRecommendation, constraints: RiskConstra
         violations.append("weekly loss limit reached")
     
     return violations
-```
