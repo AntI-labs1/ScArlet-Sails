@@ -1,22 +1,34 @@
 """
-Scarlet Sails RAG Pattern Extractor
-===================================
+ScArlet-Sails RAG Module v2.0
 
-Автоматическое извлечение индикаторов для паттернов.
+Pattern extraction, storage, and intelligent retrieval.
 
-Использование из командной строки:
-    python -m rag.cli BTC 1h "2024-11-26 14:00"
-    
-Использование в коде:
-    from rag.extractor import PatternExtractor
-    
-    extractor = PatternExtractor("BTC", "1h")
-    data = extractor.extract("2024-11-26 14:00")
-    extractor.save(data)
+Components:
+- extractor: Extract patterns from market data
+- vector_store: FAISS-based semantic search
+- multi_hyde: Multi-hypothesis retrieval
+- retriever: Unified retrieval interface
+- updater: Outcome tracking and statistics
 """
 
 from .extractor import PatternExtractor
 from .config import COINS, TIMEFRAMES, PATTERNS_DIR
+from .vector_store import PatternVectorStore
+from .multi_hyde import MultiHyDERetriever
+from .retriever import RAGRetriever
+from .updater import PatternUpdater
 
-__all__ = ['PatternExtractor', 'COINS', 'TIMEFRAMES', 'PATTERNS_DIR']
-__version__ = '1.0.0'
+__all__ = [
+    # Main classes
+    'PatternExtractor',
+    'PatternVectorStore',
+    'MultiHyDERetriever',
+    'RAGRetriever',
+    'PatternUpdater',
+    # Config
+    'COINS',
+    'TIMEFRAMES',
+    'PATTERNS_DIR',
+]
+
+__version__ = '2.0.0'
