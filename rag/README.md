@@ -260,7 +260,7 @@ print(f"Recommendation: {context['recommendation']}")
 
 ## Team Workflow для трейдеров
 
-### 1. Быстрый старт для НОВИЧКА (5 минут)
+### 1. Быстрый старт (5 минут)
 
 ```bash
 # 1. Перейти в проект
