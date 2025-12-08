@@ -1,34 +1,27 @@
 """
-ScArlet-Sails RAG Module v2.0
+ScArlet-Sails RAG Module
 
 Pattern extraction, storage, and intelligent retrieval.
 
 Components:
-- extractor: Extract patterns from market data
-- vector_store: FAISS-based semantic search
-- multi_hyde: Multi-hypothesis retrieval
-- retriever: Unified retrieval interface
-- updater: Outcome tracking and statistics
+- extractor: Extract patterns from market data (Time Capsule v2.0)
+- retriever: Pattern retrieval interface
+- config: Configuration for coins, timeframes, features
 """
 
 from .extractor import PatternExtractor
-from .config import COINS, TIMEFRAMES, PATTERNS_DIR
-from .vector_store import PatternVectorStore
-from .multi_hyde import MultiHyDERetriever
+from .config import COINS, TIMEFRAMES, PATTERNS_DIR, KEY_FEATURES
 from .retriever import RAGRetriever
-from .updater import PatternUpdater
 
 __all__ = [
     # Main classes
     'PatternExtractor',
-    'PatternVectorStore',
-    'MultiHyDERetriever',
     'RAGRetriever',
-    'PatternUpdater',
     # Config
     'COINS',
     'TIMEFRAMES',
     'PATTERNS_DIR',
+    'KEY_FEATURES',
 ]
 
-__version__ = '2.0.0'
+__version__ = '1.0.0'
