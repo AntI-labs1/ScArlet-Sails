@@ -41,16 +41,34 @@ statsmodels>=0.14.0
 openpyxl>=3.1.0
 pyarrow>=11.0.0
 
-# Optional: Jupyter
+# ========================================
+# RAG (Retrieval-Augmented Generation)
+# ========================================
+# Semantic embeddings for pattern matching
+sentence-transformers>=2.2.2
+
+# Vector database (FAISS for CPU)
+faiss-cpu>=1.7.4
+
+# Optional: LLM integration (Ollama, local models)
+langchain-community>=0.0.20
+langchain-core>=0.1.0
+
+# Optional: LangGraph for multi-agent orchestration
+# langgraph>=0.0.30  # Uncomment if using Council orchestration
+
+# ========================================
+# Development Tools
+# ========================================
+# Jupyter
 jupyter>=1.0.0
 ipython>=8.10.0
 
-# Optional: Testing
+# Testing (updated)
 pytest>=7.2.0
 pytest-cov>=4.0.0
 
-# Optional: Code Quality
+# Code Quality
 black>=23.1.0
 flake8>=6.0.0
-
 mypy>=1.0.0
