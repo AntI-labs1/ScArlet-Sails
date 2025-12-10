@@ -178,7 +178,7 @@ class XGBoostMLStrategyV3:
     def generate_signal(
         self,
         features: Union[pd.DataFrame, pd.Series, np.ndarray],
-        threshold: float = 0.5,
+        threshold: float = 0.70,
         crisis_level: float = 0.0,
         drawdown: float = 0.0,
         regime: str = "normal",
@@ -239,7 +239,7 @@ class XGBoostMLStrategyV3:
     def generate_signals_batch(
         self,
         df: pd.DataFrame,
-        threshold: float = 0.5,
+        threshold: float = 0.70,
     ) -> pd.DataFrame:
         """Генерировать сигналы для всего DataFrame."""
         result = df.copy()
@@ -260,7 +260,7 @@ class XGBoostMLStrategyV3:
         self,
         X: Union[pd.DataFrame, np.ndarray],
         y: Union[pd.Series, np.ndarray],
-        threshold: float = 0.5,
+        threshold: float = 0.70,
     ) -> Dict:
         """Оценить качество модели."""
         from sklearn.metrics import (

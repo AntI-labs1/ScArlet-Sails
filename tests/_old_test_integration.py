@@ -148,7 +148,7 @@ print("-"*80)
 
 try:
     # Rule-Based
-    rb_signal = rule_based.generate_signal(data)
+    rb_signal = rule_based.generate_signals(data)
     print(f"✅ RuleBasedStrategy generated signal: {rb_signal}")
 except Exception as e:
     print(f"❌ RuleBasedStrategy signal generation failed: {e}")
@@ -156,7 +156,7 @@ except Exception as e:
 
 try:
     # XGBoost ML
-    ml_signal = xgboost_ml.generate_signal(data)
+    ml_signal = xgboost_ml.generate_signals(data)
     print(f"✅ XGBoostMLStrategy generated signal: {ml_signal}")
 except Exception as e:
     print(f"❌ XGBoostMLStrategy signal generation failed: {e}")
@@ -164,7 +164,7 @@ except Exception as e:
 
 try:
     # Hybrid
-    hybrid_signal = hybrid.generate_signal(data)
+    hybrid_signal = hybrid.generate_signals(data)
     print(f"✅ HybridStrategy generated signal: {hybrid_signal}")
 except Exception as e:
     print(f"❌ HybridStrategy signal generation failed: {e}")
