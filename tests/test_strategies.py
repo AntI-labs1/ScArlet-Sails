@@ -62,26 +62,26 @@ class TestRuleBasedStrategy:
     
     def test_import(self):
         """Strategy can be imported."""
-        from strategies.rule_based_v2 import RuleBasedStrategyV2
-        assert RuleBasedStrategyV2 is not None
+        from strategies.rule_based_v2 import RuleBasedStrategy
+        assert RuleBasedStrategy is not None
     
     def test_initialization(self):
         """Strategy initializes without errors."""
-        from strategies.rule_based_v2 import RuleBasedStrategyV2
-        strategy = RuleBasedStrategyV2()
+        from strategies.rule_based_v2 import RuleBasedStrategy
+        strategy = RuleBasedStrategy()
         assert strategy is not None
     
     def test_generate_signals_returns_dataframe(self, sample_ohlcv):
         """generate_signals returns DataFrame."""
-        from strategies.rule_based_v2 import RuleBasedStrategyV2
-        strategy = RuleBasedStrategyV2()
+        from strategies.rule_based_v2 import RuleBasedStrategy
+        strategy = RuleBasedStrategy()
         result = strategy.generate_signals(sample_ohlcv)
         assert isinstance(result, pd.DataFrame)
     
     def test_generate_signals_has_required_columns(self, sample_ohlcv):
         """Output has P_rb and signal columns."""
-        from strategies.rule_based_v2 import RuleBasedStrategyV2
-        strategy = RuleBasedStrategyV2()
+        from strategies.rule_based_v2 import RuleBasedStrategy
+        strategy = RuleBasedStrategy()
         result = strategy.generate_signals(sample_ohlcv)
         assert 'P_rb' in result.columns or 'signal' in result.columns
 
