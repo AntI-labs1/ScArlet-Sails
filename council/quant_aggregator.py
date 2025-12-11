@@ -15,6 +15,9 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+# Rolling dispersion for position sizing
+from core.rolling_dispersion import RollingDispersionCalculator, integrate_dispersion_with_position_sizing
+
 # Council contracts
 from council.contracts import (
     QuantSignals,
@@ -67,6 +70,8 @@ class QuantAggregator:
         self._strategies: Dict[str, Any] = {}
         self._last_results: Dict[str, StrategyResult] = {}
         self._signal_threshold: float = 0.5  # Above = bullish, below = bearish
+        # Rolling dispersion calculator for position sizing
+        self._dispersion_calc = RollingDispersionCalculator(window=100)
     
     def register_strategy(self, name: str, strategy: Any) -> None:
         """
@@ -252,6 +257,14 @@ class QuantAggregator:
         """Get detailed results from last aggregation."""
         return self._last_results.copy()
     
+    def get_dispersion_statistics(self) -> dict:
+        """Get rolling dispersion statistics."""
+        return self._dispersion_calc.get_statistics()
+    
+    def reset_dispersion(self) -> None:
+        """Reset dispersion calculator (e.g., for new backtest run)."""
+        self._dispersion_calc.reset()
+    
     def to_agent_opinion(
         self,
         signals: QuantSignals,
@@ -276,7 +289,7 @@ class QuantAggregator:
         # Build justification
         justification = self._build_justification(signals)
         
-        # Suggested position size based on agreement
+        # Suggested position size based on rolling dispersion
         position_size = self._suggest_position_size(signals)
         
         return AgentOpinion(
@@ -364,21 +377,38 @@ class QuantAggregator:
         if signals.agreement is not None:
             parts.append(f"Agreement: {signals.agreement:.0%}")
         
+        # Add dispersion info
+        disp_state = self._dispersion_calc.get_state()
+        if disp_state and disp_state.n_samples > 0:
+            parts.append(f"Dispersion: {disp_state.current_std:.3f} (x{disp_state.confidence_multiplier:.2f})")
+        
         return " | ".join(parts) if parts else "No signals available"
     
     def _suggest_position_size(self, signals: QuantSignals) -> float:
         """
-        Suggest position size based on agreement.
+        Suggest position size based on rolling dispersion.
         
-        Higher agreement = larger position allowed.
+        Uses historical dispersion to adjust confidence:
+        - High dispersion (disagreement) → smaller position
+        - Low dispersion (consensus) → larger position
         """
+        # Update dispersion calculator with current signals
+        disp_state = self._dispersion_calc.update(
+            p_rb=signals.p_rb,
+            p_ml=signals.p_ml,
+            p_hyb=signals.p_hyb,
+        )
+        
+        # Base position from agreement (original logic)
         if signals.agreement is None:
-            return 0.5  # Default conservative
+            base_size = 0.5
+        else:
+            base_size = 0.25 + 0.75 * signals.agreement
         
-        # Scale: agreement 0.5 -> 0.25%, agreement 1.0 -> 1.0%
-        base_size = 0.25 + 0.75 * signals.agreement
+        # Apply dispersion multiplier
+        adjusted_size = base_size * disp_state.confidence_multiplier
         
-        return float(np.clip(base_size, 0.1, 1.0))
+        return float(np.clip(adjusted_size, 0.1, 1.5))
 
 
 def detect_regime(features: pd.DataFrame) -> Regime:
