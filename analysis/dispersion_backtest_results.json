@@ -1,0 +1,28 @@
+{
+  "fixed": {
+    "name": "Fixed",
+    "n_trades": 385,
+    "total_return_pct": 84.68699482582977,
+    "mean_return_pct": 0.2199662203268306,
+    "sharpe": 1.8787034921562509,
+    "win_rate": 63.37662337662338,
+    "max_dd_pct": -26.994754793081675,
+    "profit_factor": 1.6747883696197776,
+    "calmar": 3.1371648112741406
+  },
+  "dispersion": {
+    "name": "Dispersion",
+    "n_trades": 385,
+    "total_return_pct": 72.69836382429818,
+    "mean_return_pct": 0.1888269190241511,
+    "sharpe": 1.759106146999988,
+    "win_rate": 63.37662337662338,
+    "max_dd_pct": -21.09468303653968,
+    "profit_factor": 1.6951096218739616,
+    "calmar": 3.446288512530475,
+    "avg_position": 0.8639092612210866,
+    "min_position": 0.24532731489078693,
+    "max_position": 1.4869860451015493
+  },
+  "threshold": 0.7
+}
