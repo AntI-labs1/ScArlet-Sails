@@ -17,6 +17,9 @@ import pandas as pd
 
 # Rolling dispersion for position sizing
 from core.rolling_dispersion import RollingDispersionCalculator, integrate_dispersion_with_position_sizing
+# Regime detection and dynamic position sizing
+from core.regime_detector import RegimeDetector
+from core.dynamic_position_sizer import DynamicPositionSizer, PositionSizingInput
 
 # Council contracts
 from council.contracts import (
@@ -72,6 +75,11 @@ class QuantAggregator:
         self._signal_threshold: float = 0.5  # Above = bullish, below = bearish
         # Rolling dispersion calculator for position sizing
         self._dispersion_calc = RollingDispersionCalculator(window=100)
+        # Regime detection and dynamic position sizing
+        self._regime_detector = RegimeDetector()
+        self._position_sizer = DynamicPositionSizer()
+        self._current_drawdown = 0.0
+        self._last_ohlcv = None
     
     def register_strategy(self, name: str, strategy: Any) -> None:
         """
@@ -385,30 +393,42 @@ class QuantAggregator:
         return " | ".join(parts) if parts else "No signals available"
     
     def _suggest_position_size(self, signals: QuantSignals) -> float:
-        """
-        Suggest position size based on rolling dispersion.
+        """Dynamic position sizing based on multiple factors."""
         
-        Uses historical dispersion to adjust confidence:
-        - High dispersion (disagreement) → smaller position
-        - Low dispersion (consensus) → larger position
-        """
-        # Update dispersion calculator with current signals
-        disp_state = self._dispersion_calc.update(
-            p_rb=signals.p_rb,
-            p_ml=signals.p_ml,
-            p_hyb=signals.p_hyb,
+        # Get dispersion state
+        disp_state = None
+        if signals.p_rb is not None and signals.p_ml is not None:
+            disp_state = self._dispersion_calc.update(
+                p_rb=signals.p_rb,
+                p_ml=signals.p_ml,
+                p_hyb=signals.p_hyb or 0.5
+            )
+        
+        # Get regime state
+        regime_state = None
+        if self._last_ohlcv is not None and len(self._last_ohlcv) > 20:
+            regime_state = self._regime_detector.detect(self._last_ohlcv)
+        
+        # Build inputs
+        inputs = PositionSizingInput(
+            p_hyb=signals.p_hyb or 0.5,
+            agreement=signals.agreement or 0.5,
+            dispersion_state=disp_state,
+            regime_state=regime_state,
+            current_drawdown=self._current_drawdown,
         )
         
-        # Base position from agreement (original logic)
-        if signals.agreement is None:
-            base_size = 0.5
-        else:
-            base_size = 0.25 + 0.75 * signals.agreement
-        
-        # Apply dispersion multiplier
-        adjusted_size = base_size * disp_state.confidence_multiplier
-        
-        return float(np.clip(adjusted_size, 0.1, 1.5))
+        # Calculate
+        output = self._position_sizer.calculate(inputs)
+        return output.position_size
+    
+    def set_ohlcv(self, df):
+        """Set current OHLCV for regime detection."""
+        self._last_ohlcv = df
+    
+    def set_drawdown(self, dd: float):
+        """Update current drawdown."""
+        self._current_drawdown = dd
 
 
 def detect_regime(features: pd.DataFrame) -> Regime:
