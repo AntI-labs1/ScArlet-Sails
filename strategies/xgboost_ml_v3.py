@@ -27,6 +27,7 @@ import pandas as pd
 import xgboost as xgb
 
 from core.feature_engine_v2 import FeatureSpecV3
+from core.ood_detector import OODDetector
 
 
 class XGBoostMLStrategyV3:
@@ -56,6 +57,12 @@ class XGBoostMLStrategyV3:
         self.metadata: Dict = {}
         # опционально: сюда можно положить FeatureSpecV3
         self.feature_spec: Optional[FeatureSpecV3] = None
+
+        # OOD Detector
+        self._ood_detector = OODDetector()
+        ood_path = Path('models/ood_detector_btc_15m.json')
+        if ood_path.exists():
+            self._ood_detector.load(str(ood_path))
 
         if model_path:
             self.load_model(model_path)
@@ -212,6 +219,14 @@ class XGBoostMLStrategyV3:
         else:
             proba = self.predict_single(features)
 
+        # Базовая confidence до фильтров/регимов
+        confidence = proba
+
+        # OOD check
+        if self._ood_detector._fitted:
+            ood_state = self._ood_detector.detect(features)
+            confidence *= ood_state.confidence_multiplier
+
         # 2. Режимные фильтры
         filter_crisis = crisis_level < 0.7
         filter_drawdown = drawdown < 0.15
@@ -221,7 +236,7 @@ class XGBoostMLStrategyV3:
 
         # 3. Финальный сигнал
         signal = 1 if (proba >= threshold and filters_pass) else 0
-        P_ml = proba if filters_pass else 0.0
+        P_ml = confidence if filters_pass else 0.0
 
         return {
             "signal": signal,
