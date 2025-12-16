@@ -17,7 +17,6 @@ import pandas as pd
 
 # Rolling dispersion for position sizing
 from core.rolling_dispersion import RollingDispersionCalculator, integrate_dispersion_with_position_sizing
-# Regime detection and dynamic position sizing
 from core.regime_detector import RegimeDetector
 from core.dynamic_position_sizer import DynamicPositionSizer, PositionSizingInput
 
@@ -75,7 +74,6 @@ class QuantAggregator:
         self._signal_threshold: float = 0.5  # Above = bullish, below = bearish
         # Rolling dispersion calculator for position sizing
         self._dispersion_calc = RollingDispersionCalculator(window=100)
-        # Regime detection and dynamic position sizing
         self._regime_detector = RegimeDetector()
         self._position_sizer = DynamicPositionSizer()
         self._current_drawdown = 0.0

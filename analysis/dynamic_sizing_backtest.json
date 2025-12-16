@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-12-16T09:10:01.547980",
+  "threshold": 0.7,
+  "static": {
+    "name": "Static (1.0)",
+    "total_return": 115.96831224514364,
+    "sharpe": 1.510537180443643,
+    "max_dd": -36.40085577443868,
+    "win_rate": 59.904153354632584,
+    "calmar": 3.185867743433071,
+    "avg_position": 1.0,
+    "n_trades": 626
+  },
+  "dynamic": {
+    "name": "Dynamic",
+    "total_return": 138.3947832222852,
+    "sharpe": 2.1096741254353395,
+    "max_dd": -15.40755482149518,
+    "win_rate": 59.904153354632584,
+    "calmar": 8.982267778739928,
+    "avg_position": 0.8352179513009784,
+    "n_trades": 626
+  },
+  "positions": {
+    "dynamic_mean": 0.8352179513009784,
+    "dynamic_min": 0.09830596162575615,
+    "dynamic_max": 1.5
+  }
+}
