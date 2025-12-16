@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-12-16T17:32:10.137738",
+  "threshold": 0.7,
+  "no_ood": {
+    "name": "Without OOD",
+    "total_return": 126.37928195505066,
+    "sharpe": 1.8787369185211376,
+    "max_dd": -26.994754793081675,
+    "n_trades": 385
+  },
+  "with_ood": {
+    "name": "With OOD",
+    "total_return": 126.37928195505066,
+    "sharpe": 1.8787369185211376,
+    "max_dd": -26.994754793081675,
+    "n_trades": 385
+  },
+  "ood_count": 0,
+  "ood_rate": 0.0
+}
