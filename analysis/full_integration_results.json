@@ -1,0 +1,83 @@
+{
+  "timestamp": "2025-12-17T14:58:02.139136",
+  "results": [
+    {
+      "name": "1. Baseline (static)",
+      "total_return": 17272.43,
+      "sharpe": 2.364,
+      "max_dd": -78.43,
+      "calmar": 220.232,
+      "win_rate": 50.8,
+      "n_trades": 81934,
+      "avg_position": 1.0
+    },
+    {
+      "name": "2. + Threshold 0.70",
+      "total_return": 126.98,
+      "sharpe": 1.885,
+      "max_dd": -26.99,
+      "calmar": 4.704,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 1.0
+    },
+    {
+      "name": "3. + Regime",
+      "total_return": 120.48,
+      "sharpe": 2.192,
+      "max_dd": -17.11,
+      "calmar": 7.04,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 0.958
+    },
+    {
+      "name": "4. + Dispersion",
+      "total_return": 107.48,
+      "sharpe": 2.106,
+      "max_dd": -16.02,
+      "calmar": 6.709,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 0.856
+    },
+    {
+      "name": "5. + Q-Learner",
+      "total_return": 106.77,
+      "sharpe": 2.096,
+      "max_dd": -15.95,
+      "calmar": 6.695,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 0.856
+    },
+    {
+      "name": "6. + OOD",
+      "total_return": 106.77,
+      "sharpe": 2.096,
+      "max_dd": -15.95,
+      "calmar": 6.695,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 0.856
+    },
+    {
+      "name": "FULL STACK",
+      "total_return": 106.77,
+      "sharpe": 2.096,
+      "max_dd": -15.95,
+      "calmar": 6.695,
+      "win_rate": 63.85,
+      "n_trades": 379,
+      "avg_position": 0.856
+    }
+  ],
+  "analysis": {
+    "baseline_sharpe": 2.364294554223055,
+    "full_sharpe": 2.0960113086979604,
+    "sharpe_improvement": -0.26828324552509475,
+    "baseline_calmar": 220.23198571044028,
+    "full_calmar": 6.694754935510564,
+    "calmar_improvement": -213.53723077492972
+  }
+}

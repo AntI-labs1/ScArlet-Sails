@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-12-17T19:29:40.816725",
+  "correlation_p_rb_p_ml": -0.003197179751449987,
+  "results": [
+    {
+      "name": "P_ml only (threshold 0.70)",
+      "total_return": 125.71,
+      "sharpe": 1.873,
+      "max_dd": -26.99,
+      "calmar": 4.657
+    },
+    {
+      "name": "P_ml + Regime",
+      "total_return": 116.28,
+      "sharpe": 2.13,
+      "max_dd": -17.11,
+      "calmar": 6.794
+    },
+    {
+      "name": "P_ml + Regime + Dispersion (real P_rb)",
+      "total_return": 95.86,
+      "sharpe": 1.844,
+      "max_dd": -18.94,
+      "calmar": 5.062
+    },
+    {
+      "name": "Full: P_hyb + Regime + Dispersion",
+      "total_return": 3653.27,
+      "sharpe": 15.208,
+      "max_dd": -1.05,
+      "calmar": 3474.119
+    }
+  ]
+}

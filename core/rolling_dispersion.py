@@ -2,8 +2,8 @@
 Rolling Dispersion Calculator for Real-Time Position Sizing.
 
 Tracks historical dispersion between P_rb, P_ml, P_hyb over rolling window.
-High dispersion = low confidence = smaller position.
-Low dispersion = high agreement = larger position.
+NOTE: Inverted logic - high dispersion → high multiplier (more position).
+This reflects that divergence may indicate trading opportunities.
 
 Integration: QuantAggregator._suggest_position_size()
 """
@@ -33,8 +33,8 @@ class RollingDispersionCalculator:
     Logic:
     - Track std(P_rb, P_ml, P_hyb) over rolling window
     - Compare current dispersion to historical distribution
-    - High dispersion (disagreement) → reduce position
-    - Low dispersion (consensus) → increase position
+    - NOTE: Inverted logic - high dispersion → high multiplier (more position)
+    - Low dispersion → low multiplier (less position)
     
     Usage:
         calc = RollingDispersionCalculator(window=100)
@@ -154,31 +154,32 @@ class RollingDispersionCalculator:
         n_samples: int,
     ) -> float:
         """
-        Calculate position size multiplier based on dispersion.
+        Calculate position multiplier based on dispersion.
         
-        Strategy:
-        - Low dispersion (< low_threshold): High confidence → max_mult
-        - High dispersion (> high_threshold): Low confidence → min_mult
-        - In between: Linear interpolation
-        - Use percentile for adaptive thresholds after warmup
+        INVERTED LOGIC (based on empirical data):
+        - High dispersion (percentile→1) → high multiplier (more position)
+        - Low dispersion (percentile→0) → low multiplier (less position)
+        
+        Rationale: High dispersion = one strategy sees something others don't
+                   Low dispersion = consensus = already priced in
         """
+        # Before enough samples: use simple threshold logic (also inverted)
         if n_samples < self.min_samples:
-            # Warmup period - use fixed thresholds
             if current_std <= self.low_threshold:
-                return self.max_mult
+                return self.min_mult  # Low dispersion → small position
             elif current_std >= self.high_threshold:
-                return self.min_mult
+                return self.max_mult  # High dispersion → large position
             else:
-                # Linear interpolation
+                # Linear interpolation (inverted)
                 ratio = (current_std - self.low_threshold) / (
                     self.high_threshold - self.low_threshold
                 )
-                return self.max_mult - ratio * (self.max_mult - self.min_mult)
-        else:
-            # After warmup - use percentile-based scaling
-            # percentile 0.0 (lowest dispersion) → max_mult
-            # percentile 1.0 (highest dispersion) → min_mult
-            return self.max_mult - percentile * (self.max_mult - self.min_mult)
+                return self.min_mult + ratio * (self.max_mult - self.min_mult)
+        
+        # After warmup: use percentile (inverted)
+        # percentile=0 (low dispersion) → min_mult
+        # percentile=1 (high dispersion) → max_mult
+        return self.min_mult + percentile * (self.max_mult - self.min_mult)
     
     def get_state(self) -> Optional[DispersionState]:
         """Get last computed state without updating."""
@@ -222,8 +223,9 @@ def integrate_dispersion_with_position_sizing(
     Returns:
         (adjusted_position, justification)
     """
-    # Apply dispersion multiplier
-    adjusted = base_position * dispersion_state.confidence_multiplier
+    # Apply dispersion multiplier directly (already inverted in _calculate_multiplier)
+    adjusted_mult = dispersion_state.confidence_multiplier
+    adjusted = base_position * adjusted_mult
     
     # Optional: Further adjust by agreement if provided
     if agreement is not None:

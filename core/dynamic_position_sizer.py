@@ -115,9 +115,12 @@ class DynamicPositionSizer:
         )
         components['signal_strength'] = signal_strength
         
-        # 5. Dispersion multiplier
+        # 5. Dispersion multiplier (inverted: high dispersion → high multiplier)
         if inputs.dispersion_state is not None:
-            disp_mult = inputs.dispersion_state.confidence_multiplier
+            # Invert: high dispersion → high multiplier (more position)
+            # low dispersion → low multiplier (less position)
+            inverted_mult = 2.0 - inputs.dispersion_state.confidence_multiplier
+            disp_mult = np.clip(inverted_mult, 0.5, 1.5)
         else:
             disp_mult = 1.0
         components['dispersion_mult'] = disp_mult
@@ -184,10 +187,10 @@ class DynamicPositionSizer:
         if inputs.current_drawdown < -0.15:
             parts.append(f"DD={inputs.current_drawdown:.1%}: reducing risk")
         
-        # Dispersion
-        if components['dispersion_mult'] < 0.5:
-            parts.append("High disagreement: cautious")
+        # Dispersion (inverted logic)
+        if components['dispersion_mult'] < 0.7:
+            parts.append("Low dispersion: reduced size")
         elif components['dispersion_mult'] > 1.2:
-            parts.append("Strong consensus: confident")
+            parts.append("High dispersion: increased size")
         
         return "; ".join(parts) if parts else "Normal conditions"
