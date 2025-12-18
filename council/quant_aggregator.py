@@ -396,11 +396,11 @@ class QuantAggregator:
         # Get dispersion state
         disp_state = None
         if signals.p_rb is not None and signals.p_ml is not None:
-        disp_state = self._dispersion_calc.update(
-            p_rb=signals.p_rb,
-            p_ml=signals.p_ml,
+            disp_state = self._dispersion_calc.update(
+                p_rb=signals.p_rb,
+                p_ml=signals.p_ml,
                 p_hyb=signals.p_hyb or 0.5
-        )
+            )
         
         # Get regime state
         regime_state = None
