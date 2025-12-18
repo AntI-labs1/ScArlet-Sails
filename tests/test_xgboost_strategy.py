@@ -17,7 +17,7 @@ sys.path.append('.')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from strategies.xgboost_ml_v2 import XGBoostMLStrategy
+from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3
 
 def main():
     """Test XGBoost strategy in isolation"""
