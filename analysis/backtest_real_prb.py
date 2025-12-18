@@ -67,24 +67,33 @@ def main():
     print("\nGenerating REAL P_rb signals...")
     rb_strategy = RuleBasedStrategy()
     
-    # Need OHLCV for P_rb
+    # Use OHLCV from features
     ohlcv_cols = ['open', 'high', 'low', 'close', 'volume']
     df_ohlcv = feat[ohlcv_cols].copy()
-    df_ohlcv.index = pd.RangeIndex(len(df_ohlcv))
     
+    # Generate signals (returns DataFrame with DatetimeIndex)
     rb_results = rb_strategy.generate_signals(df_ohlcv)
-    p_rb_raw = rb_results['P_rb'].values
+    
+    # Extract P_rb values and align with predictions
+    # Reset both to numeric index for alignment
+    p_rb_raw = rb_results['P_rb'].values  # numpy array, same length as feat
+    
+    print(f"P_rb raw: non-nan={np.sum(~np.isnan(p_rb_raw))}/{len(p_rb_raw)}")
+    print(f"P_rb raw (valid): min={np.nanmin(p_rb_raw):.4f}, max={np.nanmax(p_rb_raw):.4f}, mean={np.nanmean(p_rb_raw):.4f}")
     
     # Normalize to [0, 1]
-    p_rb = np.array([normalize_p_rb(x) for x in p_rb_raw])
+    p_rb = np.array([normalize_p_rb(x) if not np.isnan(x) else np.nan for x in p_rb_raw])
     
-    print(f"P_rb raw: min={p_rb_raw.min():.4f}, max={p_rb_raw.max():.4f}, mean={p_rb_raw.mean():.4f}")
-    print(f"P_rb normalized: min={p_rb.min():.4f}, max={p_rb.max():.4f}, mean={p_rb.mean():.4f}")
+    print(f"P_rb normalized (valid): min={np.nanmin(p_rb):.4f}, max={np.nanmax(p_rb):.4f}, mean={np.nanmean(p_rb):.4f}")
     
-    # Check correlation
+    # Check correlation (only on valid pairs)
     valid_mask = ~np.isnan(p_rb) & ~np.isnan(p_ml)
-    corr = np.corrcoef(p_rb[valid_mask], p_ml[valid_mask])[0, 1]
-    print(f"Correlation(P_rb, P_ml): {corr:.3f}")
+    if valid_mask.sum() > 100:
+        corr = np.corrcoef(p_rb[valid_mask], p_ml[valid_mask])[0, 1]
+        print(f"Correlation(P_rb, P_ml): {corr:.3f} (on {valid_mask.sum()} samples)")
+    else:
+        corr = 0
+        print("WARNING: Not enough valid samples for correlation")
     
     # Initialize components
     dispersion_calc = RollingDispersionCalculator(window=100)
