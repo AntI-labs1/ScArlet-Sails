@@ -17,7 +17,7 @@ Philosophy:
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 import numpy as np
@@ -163,6 +163,18 @@ class CouncilSession:
             # RAG
             if HAS_RAG:
                 self._rag_retriever = HybridRetriever()
+                
+                # Auto-rebuild index if empty (FIX: 0 patterns issue)
+                try:
+                    stats = self._rag_retriever.get_stats()
+                    pattern_count = stats.get('vector_store', {}).get('total_patterns', 0)
+                    if pattern_count == 0:
+                        logger.warning("RAG index empty, attempting rebuild...")
+                        if hasattr(self._rag_retriever, 'rebuild_index'):
+                            count = self._rag_retriever.rebuild_index(verbose=False)
+                            logger.info(f"Rebuilt RAG index: {count} patterns")
+                except Exception as e:
+                    logger.warning(f"RAG index check failed: {e}")
             
             # Aggregator
             self._aggregator = QuantAggregator()
@@ -204,13 +216,38 @@ class CouncilSession:
             'volume': np.random.exponential(1e9, n),
         }, index=dates)
         
-        # Generate features (simplified)
+        # Generate features (EXPANDED for RuleBasedStrategy)
         self._features = self._ohlcv.copy()
         self._features['RSI_14'] = 30 + np.random.rand(n) * 40  # 30-70
         self._features['ATR_pct'] = 0.015 + np.random.rand(n) * 0.02
         self._features['volume_ratio'] = 0.8 + np.random.rand(n) * 0.4
         
-        logger.info(f"Demo data generated: {n} bars")
+        # EMA for ema_filter (FIX: P_rb = nan)
+        self._features['EMA_9'] = self._features['close'].ewm(span=9).mean()
+        self._features['EMA_21'] = self._features['close'].ewm(span=21).mean()
+        self._features['SMA_50'] = self._features['close'].rolling(50).mean()
+        
+        # Bollinger Bands for bollinger_filter (FIX: P_rb = nan)
+        sma_20 = self._features['close'].rolling(20).mean()
+        std_20 = self._features['close'].rolling(20).std()
+        self._features['BB_upper'] = sma_20 + 2 * std_20
+        self._features['BB_lower'] = sma_20 - 2 * std_20
+        self._features['BB_middle'] = sma_20
+        
+        # Volume SMA for volume_filter
+        self._features['volume_sma'] = self._features['volume'].rolling(20).mean()
+        
+        # ATR for risk calculations
+        high_low = self._features['high'] - self._features['low']
+        high_close = np.abs(self._features['high'] - self._features['close'].shift())
+        low_close = np.abs(self._features['low'] - self._features['close'].shift())
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        self._features['ATR_14'] = tr.rolling(14).mean()
+        
+        # Fill NaN from rolling calculations
+        self._features = self._features.bfill().ffill()
+        
+        logger.info(f"Demo data generated: {n} bars with {len(self._features.columns)} features")
         return True
     
     def _load_real_data(self) -> bool:
@@ -280,7 +317,7 @@ class CouncilSession:
             quant_signals=quant_signals,
             rag=rag_context,
             request_id=f"{self.coin}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         )
         
         return context
@@ -311,7 +348,7 @@ class CouncilSession:
         return MarketSnapshot(
             symbol=f"{self.coin}_USDT",
             timeframe=self.timeframe,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             current_price=get_val(['close', 'Close'], 43000.0),
             spread_pct=0.01,
             volume_24h=get_val(['volume', 'Volume'], 1e9),
@@ -358,14 +395,17 @@ class CouncilSession:
             
             # Hybrid (simple average if both available)
             if p_rb is not None and p_ml is not None:
-                p_hyb = 0.5 * p_rb + 0.5 * p_ml
+                if not (np.isnan(p_rb) or np.isnan(p_ml)):
+                    p_hyb = 0.5 * p_rb + 0.5 * p_ml
         
-        # Fallback to demo values
-        if p_rb is None:
+        # Fallback to demo values (FIX: check for NaN, not just None)
+        if p_rb is None or (isinstance(p_rb, float) and np.isnan(p_rb)):
             p_rb = 0.55 + np.random.rand() * 0.2  # 0.55-0.75
-        if p_ml is None:
+            logger.debug("P_rb fallback to demo value")
+        if p_ml is None or (isinstance(p_ml, float) and np.isnan(p_ml)):
             p_ml = 0.50 + np.random.rand() * 0.25  # 0.50-0.75
-        if p_hyb is None:
+            logger.debug("P_ml fallback to demo value")
+        if p_hyb is None or (isinstance(p_hyb, float) and np.isnan(p_hyb)):
             p_hyb = 0.5 * p_rb + 0.5 * p_ml
         
         signals = QuantSignals(p_rb=p_rb, p_ml=p_ml, p_hyb=p_hyb)
@@ -457,6 +497,11 @@ class CouncilSession:
     ) -> float:
         """Calculate position size with all risk factors."""
         base_size = opinion.position_size_pct
+        
+        # FIX: Handle NaN position size
+        if base_size is None or (isinstance(base_size, float) and np.isnan(base_size)):
+            base_size = 5.0  # Default 5% position
+            logger.debug("Position size fallback to default 5%")
         
         if self._position_sizer and HAS_CORE:
             try:
