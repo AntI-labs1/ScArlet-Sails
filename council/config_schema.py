@@ -293,8 +293,11 @@ class CouncilConfig(BaseModel):
         """Сохранить конфиг в YAML файл."""
         import yaml
         
+        # model_dump с mode='json' конвертирует Enum в строки
+        data = self.model_dump(mode='json')
+        
         with open(path, 'w') as f:
-            yaml.dump(self.model_dump(), f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     
     def to_json(self, path: Union[str, Path]) -> None:
         """Сохранить конфиг в JSON файл."""
