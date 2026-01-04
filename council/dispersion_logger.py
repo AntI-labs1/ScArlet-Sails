@@ -29,7 +29,7 @@ class DispersionLogger:
         )
         self.snapshots.append(snapshot)
     
-    save_session(self):
+    def save_session(self):
         output_file = self.output_dir / f"dispersion_{self.session_id}.json"
         data = {'snapshots': [asdict(s) for s in self.snapshots]}
         with open(output_file, 'w') as f:
