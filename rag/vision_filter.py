@@ -126,6 +126,75 @@ class VisionFilter:
             logger.error(f"Failed to render chart: {e}")
             raise
     
+    def render_multi_scale_diptych(
+        self,
+        df_15m: pd.DataFrame,
+        df_4h: pd.DataFrame,
+        output_path: Optional[Path] = None,
+    ) -> Path:
+        """
+        Render diptych (two-panel chart) with 15m and 4h timeframes.
+        
+        Args:
+            df_15m: 15-minute OHLCV DataFrame
+            df_4h: 4-hour OHLCV DataFrame
+            output_path: Optional output path
+        
+        Returns:
+            Path to saved chart image
+        """
+        # Get last N candles for each timeframe
+        chart_15m = df_15m.tail(self.n_candles).copy()
+        # For 4h, use fewer candles to show longer period
+        chart_4h = df_4h.tail(self.n_candles // 4).copy()
+        
+        # Ensure proper column names
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        for df_name, df_data in [('15m', chart_15m), ('4h', chart_4h)]:
+            if not all(col in df_data.columns for col in required_cols):
+                raise ValueError(f"DataFrame {df_name} must have columns: {required_cols}")
+        
+        # Generate output path if not provided
+        if output_path is None:
+            timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+            output_path = self.temp_dir / f'diptych_{timestamp}.png'
+        
+        # Create figure with two subplots
+        fig = plt.figure(figsize=(16, 8))
+        
+        # Top panel: 15m timeframe
+        ax1 = plt.subplot(2, 1, 1)
+        mpf.plot(
+            chart_15m,
+            type='candle',
+            volume=True,
+            style='charles',
+            ax=ax1,
+            show_nontrading=False,
+            warn_too_much_data=False,
+        )
+        ax1.set_title('15m Timeframe - Pattern Detail', fontsize=12, fontweight='bold')
+        
+        # Bottom panel: 4h timeframe
+        ax2 = plt.subplot(2, 1, 2)
+        mpf.plot(
+            chart_4h,
+            type='candle',
+            volume=True,
+            style='charles',
+            ax=ax2,
+            show_nontrading=False,
+            warn_too_much_data=False,
+        )
+        ax2.set_title('4h Timeframe - Trend Context', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.savefig(str(output_path), dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        logger.debug(f"Diptych rendered: {output_path}")
+        return Path(output_path)
+    
     def image_to_base64(self, image_path: Path) -> str:
         """
         Convert image file to base64 string.
@@ -188,13 +257,15 @@ class VisionFilter:
         self,
         df: pd.DataFrame,
         pattern_type: str = "trend_continuation",
+        df_4h: Optional[pd.DataFrame] = None,
     ) -> Dict[str, any]:
         """
-        Validate trading pattern using vision analysis.
+        Validate trading pattern using multi-scale vision analysis.
         
         Args:
-            df: OHLCV DataFrame
+            df: 15m OHLCV DataFrame
             pattern_type: Type of pattern to validate
+            df_4h: Optional 4h OHLCV DataFrame for trend context
         
         Returns:
             Dict with:
@@ -203,9 +274,14 @@ class VisionFilter:
                 - position_multiplier: float (0.5 if rejected, 1.0 if confirmed)
                 - llm_response: str
         """
-        # Render chart
+        # Render chart(s)
         try:
-            chart_path = self.render_candlestick_chart(df)
+            if df_4h is not None:
+                # Multi-scale diptych
+                chart_path = self.render_multi_scale_diptych(df, df_4h)
+            else:
+                # Single timeframe (backward compatibility)
+                chart_path = self.render_candlestick_chart(df)
         except Exception as e:
             logger.error(f"Failed to render chart: {e}")
             # Fallback: assume pattern confirmed
@@ -217,11 +293,29 @@ class VisionFilter:
                 'error': str(e),
             }
         
-        # Prepare prompt based on pattern type
+        # Prepare enhanced prompt based on pattern type
         prompts = {
-            'trend_continuation': "Подтверждаешь ли ты паттерн продолжения тренда? Ответь только 'Yes' или 'No'.",
-            'reversal': "Подтверждаешь ли ты паттерн разворота тренда? Ответь только 'Yes' или 'No'.",
-            'breakout': "Подтверждаешь ли ты паттерн пробоя? Ответь только 'Yes' или 'No'.",
+            'trend_continuation': (
+                "Ты видишь два графика: верхний (15m) показывает детали паттерна, "
+                "нижний (4h) показывает общий тренд. "
+                "Подтверждает ли структура 4h текущий лонг-сигнал на 15m? "
+                "Проверь согласованность трендов между таймфреймами. "
+                "Ответь только 'Yes' (если тренды согласованы) или 'No' (если противоречат)."
+            ),
+            'reversal': (
+                "Ты видишь два графика: верхний (15m) показывает детали паттерна разворота, "
+                "нижний (4h) показывает общий тренд. "
+                "Подтверждает ли структура 4h паттерн разворота на 15m? "
+                "Проверь согласованность сигналов между таймфреймами. "
+                "Ответь только 'Yes' или 'No'."
+            ),
+            'breakout': (
+                "Ты видишь два графика: верхний (15m) показывает пробой, "
+                "нижний (4h) показывает контекст тренда. "
+                "Подтверждает ли структура 4h пробой на 15m? "
+                "Проверь силу и направление пробоя на обоих таймфреймах. "
+                "Ответь только 'Yes' или 'No'."
+            ),
         }
         
         prompt = prompts.get(pattern_type, prompts['trend_continuation'])
@@ -273,19 +367,21 @@ class VisionFilter:
         base_position_size: float,
         df: pd.DataFrame,
         pattern_type: str = "trend_continuation",
+        df_4h: Optional[pd.DataFrame] = None,
     ) -> Tuple[float, Dict[str, any]]:
         """
-        Apply vision filter to position sizing.
+        Apply vision filter to position sizing with multi-scale validation.
         
         Args:
             base_position_size: Base position size
-            df: OHLCV DataFrame
+            df: 15m OHLCV DataFrame
             pattern_type: Pattern type to validate
+            df_4h: Optional 4h OHLCV DataFrame for trend context
         
         Returns:
             Tuple of (adjusted_position_size, validation_result)
         """
-        validation = self.validate_pattern(df, pattern_type)
+        validation = self.validate_pattern(df, pattern_type, df_4h=df_4h)
         
         adjusted_size = base_position_size * validation['position_multiplier']
         

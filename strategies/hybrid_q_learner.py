@@ -1,12 +1,16 @@
 """
-Hybrid Strategy with Q-Learning.
+Hybrid Strategy with Q-Learning (Linear Function Approximation).
 
 Learns optimal weights α(t), β(t) for combining P_rb and P_ml:
     P_hyb = α(t) * P_rb + β(t) * P_ml
     
 Where weights adapt based on recent performance of each strategy.
 
-Uses tabular Q-learning (no DQN — simpler, more interpretable).
+Uses Linear Function Approximation instead of Q-table:
+- State: [trend, vol, rb_perf, ml_perf, dispersion, ood_score] (6 features)
+- Actions: 5 weight configurations
+- Q(s,a) = weights[a] · state_vector
+- Updates: Gradient descent on TD error
 """
 import numpy as np
 from dataclasses import dataclass
@@ -103,6 +107,57 @@ class HybridQLearner:
         # Statistics
         self.total_updates = 0
         self.exploration_count = 0
+        
+        # Online normalization layer (running statistics)
+        # For z-score normalization: (x - mean) / std
+        self._state_mean = np.zeros(n_state_features)
+        self._state_std = np.ones(n_state_features)
+        self._state_count = 0
+        self._normalization_alpha = 0.01  # Exponential moving average factor
+        
+        # Gradient clipping threshold
+        self.gradient_clip_norm = 1.0
+    
+    def _normalize_state(self, state_vector: np.ndarray) -> np.ndarray:
+        """
+        Online normalization of state vector using running statistics.
+        
+        Uses exponential moving average for mean and std to adapt to changing
+        market conditions without storing full history.
+        
+        Args:
+            state_vector: Raw state vector
+        
+        Returns:
+            Normalized state vector (z-score normalized)
+        """
+        # Update running statistics
+        if self._state_count == 0:
+            # Initialize with first observation
+            self._state_mean = state_vector.copy()
+            self._state_std = np.ones_like(state_vector)
+        else:
+            # Exponential moving average update
+            self._state_mean = (
+                (1 - self._normalization_alpha) * self._state_mean +
+                self._normalization_alpha * state_vector
+            )
+            
+            # Update std (using exponential moving variance)
+            diff = state_vector - self._state_mean
+            variance = (1 - self._normalization_alpha) * (self._state_std ** 2) + \
+                      self._normalization_alpha * (diff ** 2)
+            self._state_std = np.sqrt(variance) + 1e-8  # Add small epsilon to avoid division by zero
+        
+        self._state_count += 1
+        
+        # Z-score normalization: (x - mean) / std
+        normalized = (state_vector - self._state_mean) / self._state_std
+        
+        # Clip to [-3, 3] to handle outliers (3-sigma rule)
+        normalized = np.clip(normalized, -3.0, 3.0)
+        
+        return normalized
     
     def _get_q_values(self, state_vector: np.ndarray) -> Dict[WeightAction, float]:
         """
@@ -114,12 +169,15 @@ class HybridQLearner:
         Returns:
             Dict mapping actions to Q-values
         """
-        # Q(s,a) = weights[a] · state_vector
+        # Normalize state before computing Q-values
+        normalized_state = self._normalize_state(state_vector)
+        
+        # Q(s,a) = weights[a] · normalized_state
         q_values = {}
         actions = list(WeightAction)
         
         for i, action in enumerate(actions):
-            q_values[action] = float(np.dot(self.weights[i], state_vector))
+            q_values[action] = float(np.dot(self.weights[i], normalized_state))
         
         return q_values
     
@@ -201,25 +259,38 @@ class HybridQLearner:
         action: WeightAction,
         reward: float,
         next_state: MarketState,
+        dispersion: float = 0.5,
     ):
         """
         Q-learning update with gradient descent (Linear Function Approximation).
         
         TD error: δ = r + γ * max_a' Q(s', a') - Q(s, a)
-        Gradient: ∇_w Q(s, a) = state_vector
-        Update: w[a] ← w[a] + α * δ * state_vector
+        Gradient: ∇_w Q(s, a) = normalized_state_vector
+        Update: w[a] ← w[a] + α * clip(δ) * normalized_state_vector
+        
+        Args:
+            state: Current state
+            action: Action taken
+            reward: Reward received (with uncertainty penalty applied)
+            next_state: Next state
+            dispersion: Current dispersion value (for uncertainty penalty)
         """
         state_vector = state.to_vector()
         next_vector = next_state.to_vector()
+        
+        # Normalize states (this also updates running statistics)
+        normalized_state = self._normalize_state(state_vector)
+        normalized_next = self._normalize_state(next_vector)
         
         # Get action index
         actions = list(WeightAction)
         action_idx = actions.index(action)
         
-        # Current Q-value: Q(s, a) = weights[a] · state_vector
-        q_current = float(np.dot(self.weights[action_idx], state_vector))
+        # Current Q-value: Q(s, a) = weights[a] · normalized_state
+        q_current = float(np.dot(self.weights[action_idx], normalized_state))
         
         # Best next Q-value: max_a' Q(s', a')
+        # Note: _get_q_values already normalizes, so we use it directly
         next_q_values = self._get_q_values(next_vector)
         q_next_max = max(next_q_values.values())
         
@@ -227,8 +298,19 @@ class HybridQLearner:
         td_target = reward + self.gamma * q_next_max
         td_error = td_target - q_current
         
-        # Gradient descent update: w[a] ← w[a] + α * δ * state_vector
-        self.weights[action_idx] += self.lr * td_error * state_vector
+        # Gradient clipping: clip TD error to prevent explosive gradients
+        td_error_clipped = np.clip(td_error, -self.gradient_clip_norm, self.gradient_clip_norm)
+        
+        # Gradient descent update: w[a] ← w[a] + α * clip(δ) * normalized_state
+        # Use normalized state for gradient
+        gradient = self.lr * td_error_clipped * normalized_state
+        
+        # Additional clipping on gradient norm to prevent weight explosion
+        gradient_norm = np.linalg.norm(gradient)
+        if gradient_norm > self.gradient_clip_norm:
+            gradient = gradient * (self.gradient_clip_norm / gradient_norm)
+        
+        self.weights[action_idx] += gradient
         
         # Decay epsilon
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
@@ -243,6 +325,42 @@ class HybridQLearner:
     def compute_hybrid(self, p_rb: float, p_ml: float) -> float:
         """Compute P_hyb with current weights."""
         return self.alpha * p_rb + self.beta * p_ml
+    
+    def calculate_reward(
+        self,
+        p_hyb: float,
+        actual_return: float,
+        dispersion: float = 0.5,
+        uncertainty_threshold: float = 0.7,
+        uncertainty_penalty: float = -0.1,
+    ) -> float:
+        """
+        Calculate reward with uncertainty penalty.
+        
+        Args:
+            p_hyb: Hybrid probability
+            actual_return: Actual market return
+            dispersion: Dispersion between strategies (0-1)
+            uncertainty_threshold: Threshold above which penalty applies
+            uncertainty_penalty: Penalty value for high uncertainty
+        
+        Returns:
+            Adjusted reward value
+        """
+        # Base reward: return if correct direction
+        if p_hyb > 0.5:
+            base_reward = actual_return
+        else:
+            base_reward = -actual_return
+        
+        # Uncertainty penalty: penalize high dispersion
+        if dispersion > uncertainty_threshold:
+            penalty = uncertainty_penalty * (dispersion - uncertainty_threshold) / (1.0 - uncertainty_threshold)
+            adjusted_reward = base_reward + penalty
+        else:
+            adjusted_reward = base_reward
+        
+        return adjusted_reward
     
     def record_performance(self, p_rb: float, p_ml: float, actual_return: float):
         """Record strategy performance for state computation."""
@@ -267,8 +385,12 @@ class HybridQLearner:
             'weights_shape': self.weights.shape,
             'weights_mean': float(np.mean(self.weights)),
             'weights_std': float(np.std(self.weights)),
+            'weights_max': float(np.max(np.abs(self.weights))),  # For stability check
             'current_alpha': self.alpha,
             'current_beta': self.beta,
+            'state_normalization_count': self._state_count,
+            'state_mean': self._state_mean.tolist(),
+            'state_std': self._state_std.tolist(),
         }
     
     def save(self, path: str):
@@ -352,14 +474,15 @@ def train_hybrid_learner(
             action = learner.select_action(state, training=True)
             alpha, beta = learner.get_weights(action)
             
-            # Compute hybrid and reward
+            # Compute hybrid and reward with uncertainty penalty
             p_hyb = learner.compute_hybrid(p_rb[i], p_ml[i])
             
-            # Reward = return if correct direction
-            if p_hyb > 0.5:
-                reward = returns[i]
-            else:
-                reward = -returns[i]
+            # Calculate reward with uncertainty penalty
+            reward = learner.calculate_reward(
+                p_hyb=p_hyb,
+                actual_return=returns[i],
+                dispersion=dispersion,
+            )
             
             total_reward += reward
             
@@ -374,7 +497,7 @@ def train_hybrid_learner(
                     dispersion=next_dispersion,
                     ood_score=ood_score,
                 )
-                learner.update(state, action, reward, next_state)
+                learner.update(state, action, reward, next_state, dispersion=dispersion)
         
         print(f"  Episode {episode+1}: Total reward = {total_reward:.4f}, "
               f"Epsilon = {learner.epsilon:.4f}, "

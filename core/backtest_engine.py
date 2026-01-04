@@ -17,8 +17,9 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Any, Protocol
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+import random
 
 from .data_loader import load_market_data, AVAILABLE_COINS, AVAILABLE_TIMEFRAMES, get_bars_per_year
 from .trade_logger import TradeLogger, Trade
@@ -69,6 +70,11 @@ class BacktestConfig:
     
     # Execution
     entry_on_close: bool = True  # Enter at close of signal bar
+    
+    # Latency simulation
+    simulate_latency: bool = True
+    latency_min_ms: float = 50.0  # Minimum latency in milliseconds
+    latency_max_ms: float = 200.0  # Maximum latency in milliseconds
     
     # Output
     verbose: bool = True
@@ -288,9 +294,9 @@ class BacktestEngine:
             
             # Process signal
             if signal == 1 and position == 0:
-                # Open long position
+                # Open long position (with latency simulation)
                 capital, position, entry_price = self._open_position(
-                    timestamp, price, capital, coin, timeframe
+                    timestamp, price, capital, coin, timeframe, df=df, current_idx=i
                 )
             
             elif signal == -1 and position > 0:
@@ -320,6 +326,49 @@ class BacktestEngine:
         
         return equity_curve, self.trade_logger.trades
     
+    def _simulate_latency_price_impact(
+        self,
+        price: float,
+        df: pd.DataFrame,
+        current_idx: int,
+        latency_ms: float,
+    ) -> float:
+        """
+        Simulate price movement during latency period.
+        
+        Uses recent volatility to estimate price drift during latency.
+        
+        Args:
+            price: Reference price
+            df: OHLCV DataFrame
+            current_idx: Current bar index
+            latency_ms: Latency in milliseconds
+        
+        Returns:
+            Adjusted price after latency
+        """
+        if not self.config.simulate_latency:
+            return price
+        
+        # Convert latency to fraction of bar (assuming 15m = 900000ms)
+        # For different timeframes, adjust accordingly
+        bar_duration_ms = 900000  # 15 minutes default
+        latency_fraction = latency_ms / bar_duration_ms
+        
+        # Calculate recent volatility (last 20 bars)
+        lookback = min(20, current_idx)
+        if lookback > 0:
+            recent_returns = df['close'].iloc[current_idx - lookback:current_idx].pct_change().dropna()
+            if len(recent_returns) > 0:
+                volatility = recent_returns.std()
+                # Estimate price drift: random walk with volatility
+                # Scale by latency fraction
+                drift = np.random.normal(0, volatility * np.sqrt(latency_fraction))
+                adjusted_price = price * (1 + drift)
+                return adjusted_price
+        
+        return price
+    
     def _open_position(
         self,
         timestamp: datetime,
@@ -327,8 +376,20 @@ class BacktestEngine:
         capital: float,
         coin: str,
         timeframe: str,
+        df: Optional[pd.DataFrame] = None,
+        current_idx: Optional[int] = None,
     ) -> tuple[float, float, float]:
-        """Open a new position with realistic execution costs."""
+        """Open a new position with realistic execution costs and latency."""
+        # Simulate latency (50-200ms)
+        if self.config.simulate_latency:
+            latency_ms = random.uniform(
+                self.config.latency_min_ms,
+                self.config.latency_max_ms
+            )
+            # Adjust price for latency impact
+            if df is not None and current_idx is not None:
+                price = self._simulate_latency_price_impact(price, df, current_idx, latency_ms)
+        
         # Calculate position size
         size = self.position_sizer.calculate_size(capital, price)
         position_value = size * price
