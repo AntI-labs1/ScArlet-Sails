@@ -37,33 +37,47 @@ ACTION_WEIGHTS = {
 
 @dataclass
 class MarketState:
-    """Discretized market state for Q-table."""
-    trend_bin: int        # -2 to +2 (strong down to strong up)
-    volatility_bin: int   # 0 to 2 (low, medium, high)
-    rb_recent_win: int    # 0 or 1 (recent P_rb performance)
-    ml_recent_win: int    # 0 or 1 (recent P_ml performance)
+    """Continuous market state for linear function approximation."""
+    trend: float          # Continuous trend value
+    vol: float            # Continuous volatility value
+    rb_perf: float       # Recent P_rb performance (0-1)
+    ml_perf: float       # Recent P_ml performance (0-1)
+    dispersion: float    # Dispersion between strategies (0-1)
+    ood_score: float     # Out-of-distribution score (0-1)
     
-    def to_tuple(self) -> tuple:
-        return (self.trend_bin, self.volatility_bin, 
-                self.rb_recent_win, self.ml_recent_win)
+    def to_vector(self) -> np.ndarray:
+        """Convert to state vector for linear approximation."""
+        return np.array([
+            self.trend,
+            self.vol,
+            self.rb_perf,
+            self.ml_perf,
+            self.dispersion,
+            self.ood_score,
+        ])
 
 
 class HybridQLearner:
     """
-    Q-Learning for hybrid strategy weights.
+    Q-Learning with Linear Function Approximation for hybrid strategy weights.
     
-    State space: (trend, volatility, rb_performance, ml_performance)
-    Action space: 5 weight configurations
-    Reward: Trade PnL
+    Uses weight matrix instead of Q-table:
+    - State: [trend, vol, rb_perf, ml_perf, dispersion, ood_score] (6 features)
+    - Actions: 5 weight configurations
+    - Q(s,a) = weights[a] · state_vector
+    
+    Updates: Gradient descent on TD error
     """
     
     def __init__(
         self,
-        learning_rate: float = 0.1,
+        learning_rate: float = 0.01,  # Lower LR for gradient descent
         discount_factor: float = 0.95,
         epsilon: float = 0.1,
         epsilon_decay: float = 0.995,
         min_epsilon: float = 0.01,
+        n_state_features: int = 6,
+        n_actions: int = 5,
     ):
         self.lr = learning_rate
         self.gamma = discount_factor
@@ -71,15 +85,18 @@ class HybridQLearner:
         self.epsilon_decay = epsilon_decay
         self.min_epsilon = min_epsilon
         
-        # Q-table: state_tuple -> {action: Q-value}
-        self.q_table: Dict[tuple, Dict[WeightAction, float]] = {}
+        # Linear function approximation: weights matrix
+        # Shape: (n_actions, n_state_features)
+        # Each row is weights for one action
+        np.random.seed(42)  # For reproducibility
+        self.weights = np.random.normal(0, 0.1, size=(n_actions, n_state_features))
         
         # Performance tracking
         self._rb_returns: list = []
         self._ml_returns: list = []
         self._lookback = 10
         
-        # Current weights
+        # Current weights for hybrid calculation
         self.alpha = 0.5  # P_rb weight
         self.beta = 0.5   # P_ml weight
         
@@ -87,70 +104,94 @@ class HybridQLearner:
         self.total_updates = 0
         self.exploration_count = 0
     
-    def _get_q_values(self, state: tuple) -> Dict[WeightAction, float]:
-        """Get Q-values for state, initialize if new."""
-        if state not in self.q_table:
-            self.q_table[state] = {action: 0.0 for action in WeightAction}
-        return self.q_table[state]
+    def _get_q_values(self, state_vector: np.ndarray) -> Dict[WeightAction, float]:
+        """
+        Get Q-values for state using linear function approximation.
+        
+        Args:
+            state_vector: State vector [trend, vol, rb_perf, ml_perf, dispersion, ood_score]
+        
+        Returns:
+            Dict mapping actions to Q-values
+        """
+        # Q(s,a) = weights[a] · state_vector
+        q_values = {}
+        actions = list(WeightAction)
+        
+        for i, action in enumerate(actions):
+            q_values[action] = float(np.dot(self.weights[i], state_vector))
+        
+        return q_values
     
-    def _discretize_trend(self, returns: np.ndarray, periods: int = 20) -> int:
-        """Discretize trend into bins."""
+    def _normalize_trend(self, returns: np.ndarray, periods: int = 20) -> float:
+        """Calculate normalized trend value (continuous)."""
         if len(returns) < periods:
-            return 0
+            return 0.0
         
         trend = np.mean(returns[-periods:])
-        
-        if trend < -0.02:
-            return -2  # Strong down
-        elif trend < -0.005:
-            return -1  # Down
-        elif trend < 0.005:
-            return 0   # Flat
-        elif trend < 0.02:
-            return 1   # Up
-        else:
-            return 2   # Strong up
+        # Normalize to [-1, 1] range (clip extreme values)
+        return float(np.clip(trend * 10, -1.0, 1.0))
     
-    def _discretize_volatility(self, returns: np.ndarray, periods: int = 20) -> int:
-        """Discretize volatility into bins."""
+    def _normalize_volatility(self, returns: np.ndarray, periods: int = 20) -> float:
+        """Calculate normalized volatility value (continuous)."""
         if len(returns) < periods:
-            return 1
+            return 0.5  # Medium volatility
         
         vol = np.std(returns[-periods:])
-        
-        if vol < 0.01:
-            return 0  # Low
-        elif vol < 0.03:
-            return 1  # Medium
-        else:
-            return 2  # High
+        # Normalize to [0, 1] range
+        return float(np.clip(vol * 10, 0.0, 1.0))
     
-    def _recent_performance(self, returns: list) -> int:
-        """Check if recent performance is positive."""
+    def _recent_performance(self, returns: list) -> float:
+        """Calculate recent performance as continuous value [0, 1]."""
         if len(returns) < 3:
-            return 0
-        return 1 if np.mean(returns[-3:]) > 0 else 0
-    
-    def get_state(self, market_returns: np.ndarray) -> MarketState:
-        """Convert market data to discrete state."""
-        trend = self._discretize_trend(market_returns)
-        vol = self._discretize_volatility(market_returns)
-        rb_win = self._recent_performance(self._rb_returns)
-        ml_win = self._recent_performance(self._ml_returns)
+            return 0.5  # Neutral
         
-        return MarketState(trend, vol, rb_win, ml_win)
+        mean_return = np.mean(returns[-3:])
+        # Normalize: positive returns → 1.0, negative → 0.0
+        return float(np.clip((mean_return + 0.05) * 10, 0.0, 1.0))
+    
+    def get_state(
+        self,
+        market_returns: np.ndarray,
+        dispersion: float = 0.5,
+        ood_score: float = 0.5,
+    ) -> MarketState:
+        """
+        Convert market data to continuous state vector.
+        
+        Args:
+            market_returns: Market return series
+            dispersion: Dispersion between strategies (0-1)
+            ood_score: Out-of-distribution score (0-1)
+        
+        Returns:
+            MarketState with continuous features
+        """
+        trend = self._normalize_trend(market_returns)
+        vol = self._normalize_volatility(market_returns)
+        rb_perf = self._recent_performance(self._rb_returns)
+        ml_perf = self._recent_performance(self._ml_returns)
+        
+        return MarketState(
+            trend=trend,
+            vol=vol,
+            rb_perf=rb_perf,
+            ml_perf=ml_perf,
+            dispersion=float(np.clip(dispersion, 0.0, 1.0)),
+            ood_score=float(np.clip(ood_score, 0.0, 1.0)),
+        )
     
     def select_action(self, state: MarketState, training: bool = True) -> WeightAction:
-        """Select action using epsilon-greedy policy."""
-        state_tuple = state.to_tuple()
+        """Select action using epsilon-greedy policy with linear approximation."""
+        state_vector = state.to_vector()
         
         # Exploration
         if training and np.random.random() < self.epsilon:
             self.exploration_count += 1
             return np.random.choice(list(WeightAction))
         
-        # Exploitation
-        q_values = self._get_q_values(state_tuple)
+        # Exploitation: Q(s,a) = weights[a] · state_vector
+        q_values = self._get_q_values(state_vector)
         best_action = max(q_values, key=q_values.get)
         return best_action
     
@@ -161,22 +202,33 @@ class HybridQLearner:
         reward: float,
         next_state: MarketState,
     ):
-        """Q-learning update."""
-        state_tuple = state.to_tuple()
-        next_tuple = next_state.to_tuple()
+        """
+        Q-learning update with gradient descent (Linear Function Approximation).
         
-        # Current Q-value
-        q_current = self._get_q_values(state_tuple)[action]
+        TD error: δ = r + γ * max_a' Q(s', a') - Q(s, a)
+        Gradient: ∇_w Q(s, a) = state_vector
+        Update: w[a] ← w[a] + α * δ * state_vector
+        """
+        state_vector = state.to_vector()
+        next_vector = next_state.to_vector()
         
-        # Best next Q-value
-        next_q_values = self._get_q_values(next_tuple)
+        # Get action index
+        actions = list(WeightAction)
+        action_idx = actions.index(action)
+        
+        # Current Q-value: Q(s, a) = weights[a] · state_vector
+        q_current = float(np.dot(self.weights[action_idx], state_vector))
+        
+        # Best next Q-value: max_a' Q(s', a')
+        next_q_values = self._get_q_values(next_vector)
         q_next_max = max(next_q_values.values())
         
-        # TD update
+        # TD target and error
         td_target = reward + self.gamma * q_next_max
         td_error = td_target - q_current
         
-        self.q_table[state_tuple][action] = q_current + self.lr * td_error
+        # Gradient descent update: w[a] ← w[a] + α * δ * state_vector
+        self.weights[action_idx] += self.lr * td_error * state_vector
         
         # Decay epsilon
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
@@ -212,38 +264,34 @@ class HybridQLearner:
             'total_updates': self.total_updates,
             'exploration_count': self.exploration_count,
             'epsilon': self.epsilon,
-            'q_table_size': len(self.q_table),
+            'weights_shape': self.weights.shape,
+            'weights_mean': float(np.mean(self.weights)),
+            'weights_std': float(np.std(self.weights)),
             'current_alpha': self.alpha,
             'current_beta': self.beta,
         }
     
     def save(self, path: str):
-        """Save Q-table to file."""
+        """Save weights matrix to file."""
         data = {
-            'q_table': {
-                str(k): {a.value: v for a, v in actions.items()}
-                for k, actions in self.q_table.items()
-            },
+            'weights': self.weights.tolist(),
             'epsilon': self.epsilon,
             'total_updates': self.total_updates,
             'lr': self.lr,
             'gamma': self.gamma,
+            'weights_shape': list(self.weights.shape),
         }
         
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
     
     def load(self, path: str):
-        """Load Q-table from file."""
+        """Load weights matrix from file."""
         with open(path) as f:
             data = json.load(f)
         
-        self.q_table = {}
-        for k, actions in data['q_table'].items():
-            state_tuple = eval(k)  # Convert string back to tuple
-            self.q_table[state_tuple] = {
-                WeightAction(a): v for a, v in actions.items()
-            }
+        weights_list = data['weights']
+        self.weights = np.array(weights_list)
         
         self.epsilon = data.get('epsilon', 0.1)
         self.total_updates = data.get('total_updates', 0)
@@ -289,8 +337,16 @@ def train_hybrid_learner(
         total_reward = 0
         
         for i in range(50, len(pred)):  # Skip initial warmup
-            # Get state
-            state = learner.get_state(returns[:i])
+            # Calculate dispersion (simplified: absolute difference)
+            dispersion = abs(p_rb[i] - p_ml[i])
+            ood_score = 0.5  # Placeholder - would come from OOD detector
+            
+            # Get state with dispersion and OOD score
+            state = learner.get_state(
+                returns[:i],
+                dispersion=dispersion,
+                ood_score=ood_score,
+            )
             
             # Select action
             action = learner.select_action(state, training=True)
@@ -312,12 +368,17 @@ def train_hybrid_learner(
             
             # Get next state and update
             if i + 1 < len(pred):
-                next_state = learner.get_state(returns[:i+1])
+                next_dispersion = abs(p_rb[i+1] - p_ml[i+1]) if i+1 < len(pred) else 0.5
+                next_state = learner.get_state(
+                    returns[:i+1],
+                    dispersion=next_dispersion,
+                    ood_score=ood_score,
+                )
                 learner.update(state, action, reward, next_state)
         
         print(f"  Episode {episode+1}: Total reward = {total_reward:.4f}, "
               f"Epsilon = {learner.epsilon:.4f}, "
-              f"Q-table size = {len(learner.q_table)}")
+              f"Weights shape = {learner.weights.shape}")
     
     # Save
     learner.save(output_path)

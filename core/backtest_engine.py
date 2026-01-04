@@ -24,6 +24,7 @@ from .data_loader import load_market_data, AVAILABLE_COINS, AVAILABLE_TIMEFRAMES
 from .trade_logger import TradeLogger, Trade
 from .position_sizer import PositionSizer, RiskManager, PositionConfig, RiskLimits
 from .metrics_calculator import MetricsCalculator, BacktestMetrics
+from .execution_model import ExecutionModel
 
 
 class Strategy(Protocol):
@@ -146,6 +147,9 @@ class BacktestEngine:
         ))
         
         self.trade_logger = TradeLogger()
+        
+        # Initialize execution model for realistic slippage by asset tier
+        self.execution_model = ExecutionModel(commission=self.config.commission)
     
     def run(
         self,
@@ -324,7 +328,7 @@ class BacktestEngine:
         coin: str,
         timeframe: str,
     ) -> tuple[float, float, float]:
-        """Open a new position."""
+        """Open a new position with realistic execution costs."""
         # Calculate position size
         size = self.position_sizer.calculate_size(capital, price)
         position_value = size * price
@@ -334,13 +338,18 @@ class BacktestEngine:
         if not can_trade:
             return capital, 0.0, 0.0
         
-        # Calculate costs
-        commission = position_value * self.config.commission
-        slippage = position_value * self.config.slippage
-        total_cost = commission + slippage
+        # Calculate execution costs using asset tier model
+        execution_costs = self.execution_model.calculate_execution_costs(
+            coin=coin,
+            reference_price=price,
+            position_size=size,
+            direction=1,  # Buy
+        )
         
-        # Adjust for slippage (worse entry)
-        adjusted_price = price * (1 + self.config.slippage)
+        fill_price = execution_costs['fill_price']
+        commission = execution_costs['commission']
+        slippage_cost = execution_costs['slippage_cost']
+        total_cost = execution_costs['total_cost']
         
         # Execute
         capital -= position_value + total_cost
@@ -348,11 +357,11 @@ class BacktestEngine:
         # Log trade
         self.trade_logger.open_trade(
             entry_time=timestamp,
-            entry_price=adjusted_price,
+            entry_price=fill_price,
             size=size,
             direction=1,
             commission=commission,
-            slippage=slippage,
+            slippage=slippage_cost,
             strategy='backtest',
             coin=coin,
             timeframe=timeframe,
@@ -360,7 +369,7 @@ class BacktestEngine:
         
         self.risk_manager.on_trade_open()
         
-        return capital, size, adjusted_price
+        return capital, size, fill_price
     
     def _close_position(
         self,
@@ -372,22 +381,29 @@ class BacktestEngine:
         timeframe: str,
         reason: str = 'signal',
     ) -> tuple[float, float]:
-        """Close existing position."""
-        # Calculate costs
-        position_value = position * price
-        commission = position_value * self.config.commission
+        """Close existing position with realistic execution costs."""
+        # Calculate execution costs using asset tier model
+        execution_costs = self.execution_model.calculate_execution_costs(
+            coin=coin,
+            reference_price=price,
+            position_size=position,
+            direction=-1,  # Sell
+        )
         
-        # Adjust for slippage (worse exit)
-        adjusted_price = price * (1 - self.config.slippage)
-        actual_value = position * adjusted_price
+        fill_price = execution_costs['fill_price']
+        commission = execution_costs['commission']
+        slippage_cost = execution_costs['slippage_cost']
+        
+        # Calculate actual value received (after slippage and commission)
+        actual_value = position * fill_price - commission
         
         # Execute
-        capital += actual_value - commission
+        capital += actual_value
         
         # Close trade in logger
         trade = self.trade_logger.close_trade(
             exit_time=timestamp,
-            exit_price=adjusted_price,
+            exit_price=fill_price,
             commission=commission,
         )
         

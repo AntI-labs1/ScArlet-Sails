@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.sanitize_features import sanitize_for_model, validate_features
 
+# Embargo period: 5 days for 15-minute candles (5 * 24 * 4 = 480 bars)
+EMBARGO_BARS = 480
+
 
 def load_data():
     """Load feature data and model."""
@@ -84,17 +87,31 @@ def walk_forward_test(df, model, feature_names, threshold=0.70, n_folds=5, test_
     
     print(f"\nRunning {n_folds}-fold walk-forward validation...")
     print(f"Fold size: {fold_size:,} bars (~{fold_size//(24*4)} days)")
+    print(f"Embargo period: {EMBARGO_BARS} bars (~{EMBARGO_BARS//(24*4)} days)")
     print("-" * 60)
     
     for fold in range(n_folds):
-        # Define test window
-        test_end = n - fold * fold_size
-        test_start = test_end - fold_size
+        # Define test window (original calculation)
+        test_end_original = n - fold * fold_size
+        test_start_original = test_end_original - fold_size
         
-        if test_start < fold_size:
+        # Apply embargo: test starts EMBARGO_BARS after training ends
+        # Training implicitly ends at test_start_original
+        train_end = test_start_original
+        test_start = train_end + EMBARGO_BARS
+        
+        # Calculate new test_end to maintain fold_size (if possible)
+        test_end = min(test_start + fold_size, test_end_original, n)
+        
+        # Check if we have enough data after embargo
+        if test_start >= test_end or test_start >= n:
             break
         
-        # Get test data
+        # Ensure minimum test size
+        if (test_end - test_start) < 100:
+            break
+        
+        # Get test data (after embargo period)
         test_df = df.iloc[test_start:test_end].copy()
         
         # CRITICAL: Sanitize features (same as training pipeline)
@@ -132,21 +149,37 @@ def walk_forward_test(df, model, feature_names, threshold=0.70, n_folds=5, test_
         # Calculate metrics
         metrics = calculate_metrics(returns, signals)
         
-        # Get date range
-        if hasattr(test_df.index, 'min'):
-            date_start = str(test_df.index.min())[:10]
-            date_end = str(test_df.index.max())[:10]
+        # Get date ranges for output
+        if hasattr(df.index, '__getitem__'):
+            try:
+                train_end_date = str(df.index[train_end])[:10] if train_end < len(df) else "N/A"
+                test_start_date = str(test_df.index.min())[:10] if len(test_df) > 0 else "N/A"
+                test_end_date = str(test_df.index.max())[:10] if len(test_df) > 0 else "N/A"
+            except (IndexError, KeyError):
+                train_end_date = f"Index {train_end}"
+                test_start_date = f"Index {test_start}"
+                test_end_date = f"Index {test_end}"
         else:
-            date_start = str(test_start)
-            date_end = str(test_end)
+            train_end_date = f"Index {train_end}"
+            test_start_date = f"Index {test_start}"
+            test_end_date = f"Index {test_end}"
+        
+        # Calculate gap in bars
+        gap_bars = test_start - train_end
         
         metrics['fold'] = fold + 1
-        metrics['date_range'] = f"{date_start} to {date_end}"
+        metrics['date_range'] = f"{test_start_date} to {test_end_date}"
+        metrics['train_end_date'] = train_end_date
+        metrics['test_start_date'] = test_start_date
+        metrics['embargo_gap_bars'] = gap_bars
         metrics['n_samples'] = len(test_df)
         
         results.append(metrics)
         
-        print(f"Fold {fold+1}: {date_start} to {date_end}")
+        print(f"Fold {fold+1}:")
+        print(f"  Training ends: {train_end_date} (index {train_end})")
+        print(f"  Embargo gap: {gap_bars} bars (~{gap_bars//(24*4)} days)")
+        print(f"  Test period: {test_start_date} to {test_end_date}")
         print(f"  Samples: {len(test_df):,} | Trades: {metrics['n_trades']}")
         print(f"  Sharpe: {metrics['sharpe']:.2f} | WR: {metrics['win_rate']:.1f}% | DD: {metrics['max_dd']:.1f}%")
     
