@@ -169,12 +169,13 @@ class PositionSizer:
 
 @dataclass
 class RiskLimits:
-    """Risk management limits."""
+    """Risk management limits with Hard Stop (Kill Switch)."""
     max_position_pct: float = 0.25  # Max 25% in single position
-    max_drawdown_pct: float = 0.20  # Max 20% drawdown
-    daily_loss_limit_pct: float = 0.05  # Max 5% daily loss
+    max_drawdown_pct: float = 0.15  # Max 15% drawdown (Kill Switch threshold)
+    daily_loss_limit_pct: float = 0.05  # Max 5% daily loss (Kill Switch threshold)
     max_open_trades: int = 5
     stop_loss_pct: float = 0.02  # Default 2% stop loss
+    enable_kill_switch: bool = True  # Enable automatic trading halt
 
 
 class RiskManager:
@@ -233,21 +234,24 @@ class RiskManager:
         self._check_limits()
     
     def _check_limits(self):
-        """Check if any limits are breached."""
-        # Drawdown check
+        """Check if any limits are breached (Hard Stop / Kill Switch)."""
+        if not self.limits.enable_kill_switch:
+            return
+        
+        # Drawdown check (Kill Switch)
         if self._peak_value > 0:
             drawdown = (self._peak_value - self._current_value) / self._peak_value
             if drawdown >= self.limits.max_drawdown_pct:
                 self._is_halted = True
-                self._halt_reason = f"Max drawdown breached: {drawdown:.1%}"
+                self._halt_reason = f"KILL SWITCH: Max drawdown breached ({drawdown:.1%} >= {self.limits.max_drawdown_pct:.1%})"
                 return
         
-        # Daily loss check
+        # Daily loss check (Kill Switch)
         if self._current_value > 0:
-            daily_loss_pct = -self._daily_pnl / self._current_value
+            daily_loss_pct = abs(self._daily_pnl) / self._current_value if self._daily_pnl < 0 else 0.0
             if daily_loss_pct >= self.limits.daily_loss_limit_pct:
                 self._is_halted = True
-                self._halt_reason = f"Daily loss limit breached: {daily_loss_pct:.1%}"
+                self._halt_reason = f"KILL SWITCH: Daily loss limit breached ({daily_loss_pct:.1%} >= {self.limits.daily_loss_limit_pct:.1%})"
                 return
     
     def can_open_trade(

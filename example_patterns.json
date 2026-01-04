@@ -1,0 +1,91 @@
+[
+  {
+    "id": "ma50_bounce_001",
+    "name": "MA50 Bounce with RSI Confirmation",
+    "direction": "long",
+    "outcome": "win",
+    "pnl_pct": 3.2,
+    "category": "trend_continuation",
+    "description": "Price touched MA50 from above after 3 red candles. RSI at 32 showed oversold. Volume 1.2x average confirmed buyer interest. Entered at bounce candle close.",
+    "entry": {
+      "indicators": {
+        "rsi": 32,
+        "price_to_ma50_pct": -0.5,
+        "volume_ratio": 1.2
+      }
+    },
+    "context": {
+      "symbol": "BTC_USDT",
+      "timeframe": "4h",
+      "regime": "normal",
+      "trend": "bullish"
+    },
+    "lessons": [
+      "MA50 bounce works well in bullish trend",
+      "RSI confirmation improves win rate",
+      "Wait for bounce candle close before entry"
+    ],
+    "tags": [
+      "ma50",
+      "bounce",
+      "oversold",
+      "trend_continuation"
+    ]
+  },
+  {
+    "id": "false_breakout_001",
+    "name": "Failed Resistance Breakout",
+    "direction": "short",
+    "outcome": "win",
+    "pnl_pct": 2.8,
+    "category": "false_breakout",
+    "description": "Price broke above resistance on low volume, immediately rejected. RSI divergence warned of weakness. Shorted the rejection candle.",
+    "entry": {
+      "indicators": {
+        "rsi": 72,
+        "volume_ratio": 0.7
+      }
+    },
+    "context": {
+      "symbol": "BTC_USDT",
+      "timeframe": "4h",
+      "regime": "normal"
+    },
+    "lessons": [
+      "Low volume breakouts often fail",
+      "RSI divergence = warning sign",
+      "Wait for rejection confirmation"
+    ],
+    "tags": [
+      "false_breakout",
+      "resistance",
+      "divergence",
+      "short"
+    ]
+  },
+  {
+    "id": "momentum_loss_001",
+    "name": "Momentum Exhaustion Long",
+    "direction": "long",
+    "outcome": "loss",
+    "pnl_pct": -2.1,
+    "category": "trend_reversal",
+    "description": "Entered long on apparent support, but momentum was exhausted. Price continued down through support.",
+    "context": {
+      "symbol": "ETH_USDT",
+      "timeframe": "4h",
+      "regime": "high_vol"
+    },
+    "lessons": [
+      "Don't catch falling knives in high vol",
+      "Wait for momentum to confirm reversal",
+      "Support levels fail in strong downtrends"
+    ],
+    "tags": [
+      "support",
+      "failed",
+      "high_vol",
+      "lesson"
+    ]
+  }
+]
