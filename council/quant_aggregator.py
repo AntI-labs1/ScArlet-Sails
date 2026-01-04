@@ -141,11 +141,12 @@ class QuantAggregator:
         p_ml = self._extract_signal(results.get('xgboost_ml'))
         p_hyb = self._extract_signal(results.get('hybrid'))
         
-        # L2 Pressure Integration: Check orderbook pressure
+        # L2 Pressure Integration: Check orderbook pressure (Optional - FIX: Data Dead End)
         book_pressure_blocked = False
         if market_state and 'orderbook' in market_state:
             orderbook = market_state.get('orderbook')
-            if orderbook:
+            # FIX: Optional L2 - Don't break backtests on old data
+            if orderbook is not None:
                 try:
                     ob_features = self._orderbook_features.extract_all_features(orderbook)
                     book_pressure = ob_features.get('ob_imbalance', 0.0)  # Range: [-1, 1]
@@ -170,7 +171,11 @@ class QuantAggregator:
                             f"contradicted by book pressure ({book_pressure:.2f})"
                         )
                 except Exception as e:
-                    logger.warning(f"Failed to calculate book pressure: {e}")
+                    # FIX: Don't break if L2 data is missing or invalid
+                    logger.debug(f"L2 pressure check skipped (data unavailable): {e}")
+            else:
+                # No orderbook data - neutral (don't block, don't confirm)
+                logger.debug("L2 pressure check skipped: orderbook data not available")
         
         # Apply L2 pressure filter: if blocked, reduce signals to neutral
         if book_pressure_blocked:
@@ -179,23 +184,26 @@ class QuantAggregator:
             p_hyb = 0.5 if p_hyb is not None else None
             logger.info("Signals neutralized due to L2 pressure contradiction")
         
-        # OOD Fallback: Safe Mode check
+        # OOD Fallback: Safe Mode check (with hysteresis and cooldown)
         safe_mode_active = False
         if self._ood_detector is not None and market_state:
             try:
                 # Get current state features for OOD detection
                 state_features = market_state.get('state_features')
+                timestamp = market_state.get('timestamp')
                 if state_features is not None:
-                    # Calculate OOD state (includes percentile)
-                    ood_state = self._ood_detector.detect(state_features)
+                    # Calculate OOD state (includes hysteresis and cooldown logic)
+                    ood_state = self._ood_detector.detect(state_features, timestamp=timestamp)
                     
-                    # Check percentile threshold (95th percentile = Safe Mode)
-                    if ood_state.percentile >= self._ood_percentile_threshold:
-                        safe_mode_active = True
+                    # Use safe_mode_active from detector (includes hysteresis)
+                    safe_mode_active = ood_state.safe_mode_active
+                    
+                    if safe_mode_active:
                         logger.warning(
-                            f"OOD Fallback: Safe Mode activated "
-                            f"(Mahalanobis distance: {ood_state.mahalanobis_distance:.2f}, "
-                            f"percentile: {ood_state.percentile:.1%} >= {self._ood_percentile_threshold:.1%})"
+                            f"OOD Fallback: Safe Mode active "
+                            f"(distance: {ood_state.mahalanobis_distance:.2f}, "
+                            f"percentile: {ood_state.percentile:.1%}, "
+                            f"threshold_used: {ood_state.threshold_used:.2f})"
                         )
             except Exception as e:
                 logger.warning(f"OOD detection failed: {e}")
@@ -607,7 +615,7 @@ def create_quant_aggregator_with_strategies(
     # Try to import and register Hybrid
     if include_hybrid:
         try:
-            from strategies.hybrid_v2 import HybridStrategy
+            from strategies.simple_strategies import HybridStrategy
             hyb_strategy = HybridStrategy()
             aggregator.register_strategy('hybrid', hyb_strategy)
             logger.info("Registered Hybrid strategy")

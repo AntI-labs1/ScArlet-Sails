@@ -18,6 +18,9 @@ from typing import Dict, Tuple, Optional
 from enum import Enum
 import json
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WeightAction(Enum):
@@ -108,6 +111,10 @@ class HybridQLearner:
         self.total_updates = 0
         self.exploration_count = 0
         
+        # FIX: Cold Start - Warmup period to prevent learning on garbage
+        self.WARMUP_STEPS = 100
+        self.update_count = 0  # Track number of updates
+        
         # Online normalization layer (running statistics)
         # For z-score normalization: (x - mean) / std
         self._state_mean = np.zeros(n_state_features)
@@ -125,12 +132,19 @@ class HybridQLearner:
         Uses exponential moving average for mean and std to adapt to changing
         market conditions without storing full history.
         
+        FIX: Cold Start - Check for NaN in calculations.
+        
         Args:
             state_vector: Raw state vector
         
         Returns:
             Normalized state vector (z-score normalized)
         """
+        # Check for NaN/Inf in input
+        if np.any(np.isnan(state_vector)) or np.any(np.isinf(state_vector)):
+            # Return neutral state if input is invalid
+            return np.zeros_like(state_vector)
+        
         # Update running statistics
         if self._state_count == 0:
             # Initialize with first observation
@@ -148,11 +162,22 @@ class HybridQLearner:
             variance = (1 - self._normalization_alpha) * (self._state_std ** 2) + \
                       self._normalization_alpha * (diff ** 2)
             self._state_std = np.sqrt(variance) + 1e-8  # Add small epsilon to avoid division by zero
+            
+            # Check for NaN in statistics
+            if np.any(np.isnan(self._state_mean)) or np.any(np.isnan(self._state_std)):
+                # Reset if corrupted
+                self._state_mean = state_vector.copy()
+                self._state_std = np.ones_like(state_vector)
         
         self._state_count += 1
         
         # Z-score normalization: (x - mean) / std
         normalized = (state_vector - self._state_mean) / self._state_std
+        
+        # Check for NaN in normalized values
+        if np.any(np.isnan(normalized)) or np.any(np.isinf(normalized)):
+            # Return neutral state if normalization failed
+            return np.zeros_like(state_vector)
         
         # Clip to [-3, 3] to handle outliers (3-sigma rule)
         normalized = np.clip(normalized, -3.0, 3.0)
@@ -294,9 +319,20 @@ class HybridQLearner:
         next_q_values = self._get_q_values(next_vector)
         q_next_max = max(next_q_values.values())
         
+        # FIX: Cold Start - Skip updates during warmup period
+        if self.update_count < self.WARMUP_STEPS:
+            self.update_count += 1
+            # Just collect statistics, don't update weights
+            return
+        
         # TD target and error
         td_target = reward + self.gamma * q_next_max
         td_error = td_target - q_current
+        
+        # Check for NaN in TD error
+        if np.isnan(td_error) or np.isinf(td_error):
+            logger.warning(f"NaN/Inf TD error detected, skipping update")
+            return
         
         # Gradient clipping: clip TD error to prevent explosive gradients
         td_error_clipped = np.clip(td_error, -self.gradient_clip_norm, self.gradient_clip_norm)
@@ -305,6 +341,11 @@ class HybridQLearner:
         # Use normalized state for gradient
         gradient = self.lr * td_error_clipped * normalized_state
         
+        # Check for NaN in gradient
+        if np.any(np.isnan(gradient)) or np.any(np.isinf(gradient)):
+            logger.warning(f"NaN/Inf gradient detected, skipping update")
+            return
+        
         # Additional clipping on gradient norm to prevent weight explosion
         gradient_norm = np.linalg.norm(gradient)
         if gradient_norm > self.gradient_clip_norm:
@@ -312,10 +353,17 @@ class HybridQLearner:
         
         self.weights[action_idx] += gradient
         
+        # Check for NaN in weights after update
+        if np.any(np.isnan(self.weights)) or np.any(np.isinf(self.weights)):
+            logger.error(f"NaN/Inf detected in weights after update, resetting to small random values")
+            np.random.seed(42)
+            self.weights = np.random.normal(0, 0.1, size=self.weights.shape)
+        
         # Decay epsilon
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
         
         self.total_updates += 1
+        self.update_count += 1
     
     def get_weights(self, action: WeightAction) -> Tuple[float, float]:
         """Get alpha, beta for action."""

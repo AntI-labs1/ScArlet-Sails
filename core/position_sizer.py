@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 from typing import Optional, Dict
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -217,10 +220,21 @@ class RiskManager:
         trade_pnl: float = 0.0
     ):
         """Update risk manager state."""
-        # New day check
-        if self._current_date is None or timestamp.date() != self._current_date.date():
+        # New day check - FIX: "Death Loop" - Reset daily limits at 00:00 UTC
+        today = timestamp.date()
+        if self._current_date is None or today != self._current_date.date():
+            # New day detected - reset daily loss and potentially unhalt
+            old_date = self._current_date.date() if self._current_date else None
             self._daily_pnl = 0.0
             self._current_date = timestamp
+            
+            # Auto-resurrect: If halted due to daily loss, unhalt on new day
+            if self._is_halted and "Daily loss" in self._halt_reason:
+                self._is_halted = False
+                self._halt_reason = ''
+                logger.info(f"New day detected ({old_date} -> {today}). Daily loss limit reset. Trading resumed.")
+            else:
+                logger.info(f"New day detected ({old_date} -> {today}). Risk limits reset.")
         
         # Update values
         self._current_value = portfolio_value
