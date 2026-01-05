@@ -58,8 +58,7 @@ def main():
     # For now, we'll load raw data from data/ directory
     # In production, this would come from the data fetcher
     data_dir = PROJECT_ROOT / "data"
-    data_file = data_dir / f"{COIN.lower()}_{TIMEFRAME}.csv"
-    
+    data_file = data_dir / "features" / f"{COIN}_USDT_{TIMEFRAME}_features.parquet"    
     if not data_file.exists():
         print(f"    ❌ Error: Data file not found: {data_file}")
         print(f"    Please ensure you have market data in: {data_file}")
@@ -67,8 +66,7 @@ def main():
     
     # Load raw data
     try:
-        raw_df = pd.read_csv(data_file)
-        print(f"    ✅ Loaded {len(raw_df)} candles from {data_file}")
+        raw_df = pd.read_parquet(data_file)        print(f"    ✅ Loaded {len(raw_df)} candles from {data_file}")
     except Exception as e:
         print(f"    ❌ Error loading data: {e}")
         return
