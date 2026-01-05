@@ -1,79 +1,51 @@
-# core/canonical_state.py
+"""CORE - CANONICAL STATE
+Immutable data container for Strategy Inputs.
 """
-Каноническое состояние системы — единое хранилище данных, которое:
-1. Получает raw-данные из data_loader
-2. Вычисляет фичи через feature_engine_v2
-3. Предоставляет модулям (strat, risk, council) единый интерфейс
-
-Идея: все данные живут в одном месте, фичи пересчитываются 1 раз.
-"""
-
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any
 from datetime import datetime
 
-
+@dataclass
 class CanonicalState:
     """
-    Центральное состояние торговой системы.
-    Объединяет сырые данные, фичи и метаданные.
+    Единый формат данных для всех стратегий (RB, ML, RL).
+    Гарантирует, что данные прошли валидацию и санитаризацию.
     """
+    # Основные данные
+    features: pd.DataFrame          # 75 validated features
+    raw_ohlcv: pd.DataFrame         # Исходные свечи (для визуализации/расчетов PnL)
+    
+    # Метаданные состояния
+    timestamp: datetime             # Время последнего бара
+    symbol: str                     # Тикер (BTC, ETH...)
+    timeframe: str                  # 15m, 1h...
+    version: str                    # Версия фич (из Registry)
+    
+    # Дополнительные контексты (заполняются пайплайном)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Флаги валидации
+    is_valid: bool = False
+    validation_errors: list = field(default_factory=list)
 
-    def __init__(self, symbol: str = "BTCUSDT"):
-        self.symbol = symbol
-        self.raw_data: Optional[pd.DataFrame] = None  # OHLCV
-        self.features: Optional[pd.DataFrame] = None  # Признаки
-        self.last_update: Optional[datetime] = None
-        self.metadata: Dict[str, Any] = {}
+    def __post_init__(self):
+        # Автоматическая проверка целостности при создании
+        if len(self.features) != len(self.raw_ohlcv):
+            self.validation_errors.append("Length mismatch: Features vs OHLCV")
+        
+        if self.features.empty:
+            self.validation_errors.append("Empty features DataFrame")
 
-    def update_raw(self, df: pd.DataFrame) -> None:
-        """
-        Загружает сырые данные (OHLCV).
-        Ожидается, что df имеет столбцы: open, high, low, close, volume.
-        """
-        self.raw_data = df.copy()
-        self.last_update = datetime.now()
-
-    def compute_features(self, feature_engine) -> None:
-        """
-        Вычисляет фичи через переданный feature_engine.
-        Результат сохраняется в self.features.
-        """
-        if self.raw_data is None or self.raw_data.empty:
-            raise ValueError("CanonicalState: нет сырых данных для вычисления фичей")
-
-        self.features = feature_engine.compute(self.raw_data)
-        self.metadata["features_computed_at"] = datetime.now()
-
-    def get_snapshot(self) -> Dict[str, Any]:
-        """
-        Возвращает полный снимок состояния:
-        - raw_data
-        - features
-        - metadata
-        """
-        return {
-            "symbol": self.symbol,
-            "raw_data": self.raw_data,
-            "features": self.features,
-            "last_update": self.last_update,
-            "metadata": self.metadata,
-        }
-
-    def get_latest_row(self) -> Optional[pd.Series]:
-        """
-        Возвращает последний (актуальный) ряд фичей.
-        Используется стратегиями для принятия решений.
-        """
-        if self.features is None or self.features.empty:
-            return None
+    def get_latest_row(self) -> pd.Series:
+        """Возвращает последнюю строку фич (для live inference)"""
         return self.features.iloc[-1]
 
-    def set_metadata(self, key: str, value: Any) -> None:
-        """Добавить метаданные"""
-        self.metadata[key] = value
+    def get_feature_matrix(self) -> np.ndarray:
+        """Возвращает numpy массив для XGBoost (без колонок, чисто данные)"""
+        return self.features.values
 
-    def get_metadata(self, key: str, default=None) -> Any:
-        """Получить метаданные"""
-        return self.metadata.get(key, default)
+    @property
+    def shape(self):
+        return self.features.shape
