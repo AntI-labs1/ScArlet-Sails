@@ -1,5 +1,0 @@
-strategy,total_return_pct,sharpe_ratio,max_drawdown_pct,total_trades,win_rate_pct,profit_factor,final_capital
-rsi,0.0,0.0,0.0,0,0,0,10000.0
-macd,0.0,0.0,0.0,0,0,0,10000.0
-trend,0.0,0.0,0.0,0,0,0,10000.0
-buyhold,24.78738048830964,1.0133272594208997,-6.151731135854543,0,0,0,12478.738048830965

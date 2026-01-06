@@ -1,2 +1,0 @@
-model,threshold,tp,sl,profit_factor,max_drawdown,total_return,n_trades,win_rate,sharpe_ratio,calmar_ratio,goals_met
-XGBoost Optimized,0.46,2.0,0.8,2.119703217049571,9.437631243866324,32.87876143000037,46,60.86956521739131,1.5014271076205592,3.483793822879955,True
