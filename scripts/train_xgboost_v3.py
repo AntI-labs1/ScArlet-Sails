@@ -21,7 +21,7 @@ from core.canonical_pipeline import CanonicalPipeline
 
 # --- CONFIG ---
 COIN = "BTC"
-TIMEFRAME = "15m"  # Убедись, что этот таймфрейм есть в data/features/
+TIMEFRAME = "4h"  # Используем 4h, так как в логах ты тестировал его успешно
 MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_NAME = f"xgboost_v3_{COIN.lower()}_{TIMEFRAME}"
 
@@ -33,7 +33,6 @@ def create_target(ohlcv: pd.DataFrame, horizon: int = 1) -> pd.Series:
     Простой таргет: цена закрытия выросла через horizon бар?
     """
     future_close = ohlcv['close'].shift(-horizon)
-    # 1 если цена выросла, 0 если упала или не изменилась
     target = (future_close > ohlcv['close']).astype(int)
     return target
 
@@ -43,13 +42,14 @@ def main():
 
     # 1. Load Data via Canonical Pipeline
     print("[1/5] Loading Canonical State...")
-    # strict_mode=False позволяет загрузить данные даже если реестр не полон
+    # strict_mode=False позволяет загрузить данные даже если реестр (feature_registry) еще пуст
     pipeline = CanonicalPipeline(strict_mode=False) 
     
     try:
-        # Пайплайн сам найдет нужный parquet (data/features/BTC_USDT_15m_features.parquet)
+        # МАГИЯ V3: Пайплайн сам находит файл, чистит NaN и валидирует
         state = pipeline.load_state(COIN, TIMEFRAME)
         print(f"    ✅ Loaded State: {state.shape} features")
+        print(f"    ℹ️  Version: {state.version}")
     except Exception as e:
         print(f"❌ Critical Error loading state: {e}")
         print(f"    Check if 'data/features/{COIN}_USDT_{TIMEFRAME}_features.parquet' exists.")
@@ -65,7 +65,7 @@ def main():
     X = X.loc[valid_mask]
     y = y.loc[valid_mask]
     
-    # Проверка на NaN в фичах
+    # Дополнительная страховка от NaN (хотя Pipeline должен был убрать)
     if X.isna().any().any():
         print("    ⚠️ Warning: NaN found in features. Filling with 0.")
         X = X.fillna(0)
