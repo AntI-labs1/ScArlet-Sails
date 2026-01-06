@@ -20,10 +20,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from .data_loader import load_market_data, AVAILABLE_COINS, AVAILABLE_TIMEFRAMES, get_bars_per_year
-from .trade_logger import TradeLogger, Trade
-from .position_sizer import PositionSizer, RiskManager, PositionConfig, RiskLimits
-from .metrics_calculator import MetricsCalculator, BacktestMetrics
+from core.data.data_loader import load_market_data, AVAILABLE_COINS, AVAILABLE_TIMEFRAMES, get_bars_per_year
+from core.utils.trade_logger import TradeLogger, Trade
+from core.risk.position_sizer import PositionSizer, RiskManager, PositionConfig, RiskLimits
+from core.engine.metrics_calculator import MetricsCalculator, BacktestMetrics
 
 
 class Strategy(Protocol):
