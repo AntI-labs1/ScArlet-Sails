@@ -68,16 +68,11 @@
     "time_american",
     "time_dayofweek",
     "time_is_monday",
-    "time_is_friday",
-    "target"
+    "time_is_friday"
   ],
-  "n_features": 70,
-  "trained_at": "2026-01-06T10:22:01.306903",
-  "metrics": {
-    "auc": 0.6075894409285516,
-    "precision": 0.5906610066707095
-  },
   "coin": "BTC",
   "timeframe": "4h",
-  "version": "v3_75_prod"
+  "metrics": {
+    "auc": 0.5466248179706513
+  }
 }
