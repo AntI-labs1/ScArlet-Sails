@@ -7,9 +7,9 @@ import numpy as np
 import logging
 from typing import Optional, List
 
-from .feature_registry import FeatureRegistry
+from core.data.feature_registry import FeatureRegistry
 from .canonical_state import CanonicalState
-from .sanitize_features import sanitize_for_model, validate_features
+from core.utils.sanitize_features import sanitize_for_model, validate_features
 from .feature_loader import FeatureLoader
 
 logger = logging.getLogger(__name__)
