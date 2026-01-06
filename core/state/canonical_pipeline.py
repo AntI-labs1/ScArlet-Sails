@@ -10,7 +10,7 @@ from typing import Optional, List
 from core.data.feature_registry import FeatureRegistry
 from .canonical_state import CanonicalState
 from core.utils.sanitize_features import sanitize_for_model, validate_features
-from .feature_loader import FeatureLoader
+from core.data.feature_loader import FeatureLoader
 
 logger = logging.getLogger(__name__)
 
