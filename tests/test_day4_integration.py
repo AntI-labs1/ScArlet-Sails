@@ -36,7 +36,7 @@ class TestDispersionIntegration:
     
     def test_dispersion_calculator_works(self):
         """Dispersion calculator produces valid output."""
-        from core.rolling_dispersion import RollingDispersionCalculator
+        from core.risk.rolling_dispersion import RollingDispersionCalculator
         
         calc = RollingDispersionCalculator(window=50)
         

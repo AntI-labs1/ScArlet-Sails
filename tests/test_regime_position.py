@@ -8,13 +8,13 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.regime_detector import (
+from core.risk.regime_detector import (
     RegimeDetector, 
     MarketRegime, 
     RegimeState,
     REGIME_POSITION_MULTIPLIER,
 )
-from core.dynamic_position_sizer import (
+from core.risk.dynamic_position_sizer import (
     DynamicPositionSizer,
     PositionSizingInput,
     PositionSizingOutput,

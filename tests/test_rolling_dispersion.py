@@ -3,7 +3,7 @@ Tests for Rolling Dispersion Calculator.
 """
 import pytest
 import numpy as np
-from core.rolling_dispersion import (
+from core.risk.rolling_dispersion import (
     RollingDispersionCalculator,
     DispersionState,
     integrate_dispersion_with_position_sizing,

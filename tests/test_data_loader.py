@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.data_loader import (
+from core.data.data_loader import (
     load_market_data,
     load_multiple_assets,
     validate_params,

@@ -16,8 +16,8 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Optional
 
-from core.regime_detector import MarketRegime, RegimeState, REGIME_POSITION_MULTIPLIER
-from core.rolling_dispersion import DispersionState
+from core.risk.regime_detector import MarketRegime, RegimeState, REGIME_POSITION_MULTIPLIER
+from core.risk.rolling_dispersion import DispersionState
 
 
 @dataclass

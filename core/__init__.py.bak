@@ -1,35 +1,33 @@
 """
-SCARLET SAILS CORE FACADE
-=========================
-Unified access point for all core subsystems.
-Architecture: Modular (Data, State, Risk, Engine, Utils)
+CORE MODULE FACADE
+Aggregates submodules for easy access.
 """
 
-# 1. State Layer (Must be loaded first usually)
-from .state.canonical_state import CanonicalState
-from .state.canonical_pipeline import CanonicalPipeline
-
-# 2. Data Layer
+# Data
 from .data.data_loader import DataLoader
 from .data.feature_loader import FeatureLoader
 from .data.feature_registry import FeatureRegistry
 
-# 3. Risk Layer
+# State
+from .state.canonical_state import CanonicalState
+from .state.canonical_pipeline import CanonicalPipeline
+
+# Risk
 from .risk.position_sizer import PositionSizer
 from .risk.dynamic_position_sizer import DynamicPositionSizer
 from .risk.regime_detector import RegimeDetector
 from .risk.rolling_dispersion import RollingDispersionCalculator
 from .risk.ood_detector import OODDetector
 
-# 4. Engine Layer
+# Engine
 from .engine.backtest_engine import BacktestEngine
 from .engine.metrics_calculator import MetricsCalculator
 
-# 5. Utils & Infra
+# Utils
 from .utils.trade_logger import TradeLogger
 from .utils.sanitize_features import sanitize_features
 
-# 6. Legacy / Base Types (if any)
+# Base types
 try:
     from .models import *
 except ImportError:

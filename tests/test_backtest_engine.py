@@ -14,10 +14,10 @@ from datetime import datetime, timedelta
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.backtest_engine import BacktestEngine, BacktestConfig, BacktestResult
-from core.trade_logger import Trade, TradeLogger
-from core.position_sizer import PositionSizer, PositionConfig, RiskManager, RiskLimits
-from core.metrics_calculator import MetricsCalculator, BacktestMetrics
+from core.engine.backtest_engine import BacktestEngine, BacktestConfig, BacktestResult
+from core.utils.trade_logger import Trade, TradeLogger
+from core.risk.position_sizer import PositionSizer, PositionConfig, RiskManager, RiskLimits
+from core.engine.metrics_calculator import MetricsCalculator, BacktestMetrics
 
 
 # ============================================================================

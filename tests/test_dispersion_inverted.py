@@ -6,7 +6,7 @@ Test that dispersion multiplier is INVERTED:
 import pytest
 import numpy as np
 
-from core.rolling_dispersion import RollingDispersionCalculator
+from core.risk.rolling_dispersion import RollingDispersionCalculator
 
 
 class TestDispersionInvertedLogic:

@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.sanitize_features import sanitize_for_model, validate_features
+from core.utils.sanitize_features import sanitize_for_model, validate_features
 
 
 class TestHardSafety:

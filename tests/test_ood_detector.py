@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.ood_detector import OODDetector, OODState
+from core.risk.ood_detector import OODDetector, OODState
 
 
 class TestOODDetector:
