@@ -1,69 +1,47 @@
 """
 XGBoost ML Strategy v3
 ======================
-
 Model 2: XGBoost на 74 features (single timeframe).
 
-Формула из документации:
-P_ml(S) = σ(f_XGB(Φ(S))) · ∏ₖ Fₖ(S) - C_adaptive(S) - R_ood(S)
-
-Изменения v3.1:
-- ИСПРАВЛЕНО: DMatrix теперь создаётся с feature_names
-- Работает с 74 features (не 31)
-- Убран multi-timeframe (каждый файл = один таймфрейм)
-
-Использование:
-    from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3
-
-    strategy = XGBoostMLStrategyV3("models/xgboost_v3_btc_15m.json")
-    result = strategy.generate_signal(features_df)
+Изменения v3.2 (Canonical Pipeline Edition):
+- УДАЛЕНО: Зависимость от feature_engine_v2 (deleted module)
+- Работает только с CanonicalState/готовыми features
+- DMatrix создаётся с feature_names из metadata
 """
-
 from pathlib import Path
 from typing import Dict, Optional, Union, Any
-
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 
-from core.feature_engine_v2 import FeatureSpecV3
 from core.ood_detector import OODDetector
 
 
 class XGBoostMLStrategyV3:
     """
     Model 2: XGBoost ML Strategy.
-
+    
     Архитектура:
-    - Input: 74 features (normalized indicators)
+    - Input: 74-75 features (normalized indicators)
     - Model: XGBoost binary classifier
     - Output: probability [0, 1] → signal {0, 1}
     """
-
+    
     EXPECTED_FEATURES = 74
 
     def __init__(self, model_path: Optional[str] = None):
-        """
-        Инициализация стратегии.
-
-        Parameters
-        ----------
-        model_path : str, optional
-            Путь к обученной модели (.json)
-        """
+        """Инициализация стратегии."""
         self.model: Optional[xgb.Booster] = None
         self.model_path: Optional[str] = None
         self.feature_names: Optional[list] = None
         self.metadata: Dict = {}
-        # опционально: сюда можно положить FeatureSpecV3
-        self.feature_spec: Optional[FeatureSpecV3] = None
-
+        
         # OOD Detector
         self._ood_detector = OODDetector()
         ood_path = Path('models/ood_detector_btc_15m.json')
         if ood_path.exists():
             self._ood_detector.load(str(ood_path))
-
+        
         if model_path:
             self.load_model(model_path)
 
@@ -72,114 +50,60 @@ class XGBoostMLStrategyV3:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Model not found: {path}")
-
+        
         self.model = xgb.Booster()
         self.model.load_model(str(path))
         self.model_path = str(path)
-
+        
         # Получить feature names из модели
         self.feature_names = self.model.feature_names
-
-        # Загрузить metadata если есть
-        metadata_path = path.parent / (path.stem + "_metadata.json")
-        if metadata_path.exists():
-            import json
-
-            with open(metadata_path, "r") as f:
-                self.metadata = json.load(f)
-            # Если в модели нет feature_names, взять из metadata
-            if self.feature_names is None:
-                self.feature_names = self.metadata.get("feature_names")
-
-        # Если удалось получить список фич — создадим FeatureSpecV3
-        if self.feature_names:
-            self.feature_spec = FeatureSpecV3(feature_names=list(self.feature_names))
-
+        
+        # Загрузить metadata
+        for suffix in ['_metadata.json', '_meta.json']:
+            metadata_path = path.parent / (path.stem + suffix)
+            if metadata_path.exists():
+                import json
+                with open(metadata_path, 'r') as f:
+                    self.metadata = json.load(f)
+                break
+        
+        # Если в модели нет feature_names, взять из metadata
+        if self.feature_names is None:
+            self.feature_names = self.metadata.get('feature_names')
+        
         print(f"✅ Model loaded: {path.name}")
         if self.feature_names:
             print(f"   Features: {len(self.feature_names)}")
 
-    def validate_feature_order(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Проверка порядка/набора фич в датафрейме против ожиданий модели.
-
-        Используется в тестах (test_feature_spec_v3.py).
-        """
-        spec = self.feature_spec
-        if spec is None:
-            if not self.feature_names:
-                raise ValueError(
-                    "XGBoostMLStrategyV3: feature_names/feature_spec не заданы"
-                )
-            spec = FeatureSpecV3(feature_names=list(self.feature_names))
-
-        return spec.validate(df.columns)
-
     def predict_proba(self, features: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
-        """
-        Получить вероятности для всех samples.
-
-        Parameters
-        ----------
-        features : pd.DataFrame or np.ndarray
-            Features shape (n_samples, 74)
-
-        Returns
-        -------
-        np.ndarray
-            Вероятности shape (n_samples,)
-        """
+        """Получить вероятности для всех samples."""
         if self.model is None:
             raise ValueError("Model not loaded. Call load_model() first.")
-
-        # Обработка DataFrame
+        
         if isinstance(features, pd.DataFrame):
-            if "target" in features.columns:
-                features = features.drop(columns=["target"])
-
-            # Проверить количество features
-            if features.shape[1] != self.EXPECTED_FEATURES:
-                raise ValueError(
-                    f"Expected {self.EXPECTED_FEATURES} features, "
-                    f"got {features.shape[1]}"
-                )
-
-            # Создать DMatrix напрямую из DataFrame (сохраняет column names)
-            dmatrix = xgb.DMatrix(features)
-
-        # Обработка numpy array
+            if 'target' in features.columns:
+                features = features.drop(columns=['target'])
+            
+            if self.feature_names:
+                features = features[self.feature_names]
+            
+            dmatrix = xgb.DMatrix(features, feature_names=list(features.columns))
         else:
-            if features.shape[1] != self.EXPECTED_FEATURES:
-                raise ValueError(
-                    f"Expected {self.EXPECTED_FEATURES} features, "
-                    f"got {features.shape[1]}"
-                )
-
-            # Создать DMatrix с feature_names
             dmatrix = xgb.DMatrix(features, feature_names=self.feature_names)
-
+        
         return self.model.predict(dmatrix)
 
-    def predict_single(
-        self, features: Union[pd.Series, pd.DataFrame, np.ndarray]
-    ) -> float:
+    def predict_single(self, features: Union[pd.Series, pd.DataFrame, np.ndarray]) -> float:
         """Получить вероятность для одного sample."""
-
-        # Если Series — конвертировать в DataFrame (сохраняет index как column names)
         if isinstance(features, pd.Series):
             features = features.to_frame().T
-
-        # Если numpy 1D — reshape и передать с feature_names
         elif isinstance(features, np.ndarray):
             if features.ndim == 1:
                 features = features.reshape(1, -1)
-            # Для numpy создаём DMatrix с feature_names в predict_proba
-
-        # Если DataFrame с одной строкой — OK
         elif isinstance(features, pd.DataFrame):
             if len(features) != 1:
                 features = features.iloc[-1:].copy()
-
+        
         return float(self.predict_proba(features)[0])
 
     def generate_signal(
@@ -188,87 +112,53 @@ class XGBoostMLStrategyV3:
         threshold: float = 0.70,
         crisis_level: float = 0.0,
         drawdown: float = 0.0,
-        regime: str = "normal",
+        regime: str = 'normal',
     ) -> Dict:
-        """
-        Генерировать торговый сигнал.
-
-        P_ml(S) = σ(f_XGB(Φ(S))) · ∏ₖ Fₖ(S)
-
-        Parameters
-        ----------
-        features : 74 features
-        threshold : порог для сигнала
-        crisis_level : уровень кризиса [0, 1]
-        drawdown : текущий drawdown [0, 1]
-        regime : рыночный режим
-
-        Returns
-        -------
-        dict
-            signal, probability, P_ml, filters_pass, filter_details
-        """
-        # 1. Получить вероятность
+        """Генерировать торговый сигнал."""
         if isinstance(features, pd.DataFrame):
-            if len(features) == 1:
-                proba = self.predict_single(features)
-            else:
-                proba = self.predict_single(features.iloc[-1:])
+            proba = self.predict_single(features.iloc[-1:] if len(features) > 1 else features)
         elif isinstance(features, pd.Series):
             proba = self.predict_single(features)
         else:
             proba = self.predict_single(features)
-
-        # Базовая confidence до фильтров/регимов
+        
         confidence = proba
-
-        # OOD check
+        
         if self._ood_detector._fitted:
             ood_state = self._ood_detector.detect(features)
             confidence *= ood_state.confidence_multiplier
-
-        # 2. Режимные фильтры
+        
         filter_crisis = crisis_level < 0.7
         filter_drawdown = drawdown < 0.15
-        filter_regime = regime != "crisis"
-
+        filter_regime = regime != 'crisis'
         filters_pass = filter_crisis and filter_drawdown and filter_regime
-
-        # 3. Финальный сигнал
+        
         signal = 1 if (proba >= threshold and filters_pass) else 0
         P_ml = confidence if filters_pass else 0.0
-
+        
         return {
-            "signal": signal,
-            "probability": proba,
-            "P_ml": P_ml,
-            "threshold": threshold,
-            "filters_pass": filters_pass,
-            "filter_details": {
-                "crisis_ok": filter_crisis,
-                "drawdown_ok": filter_drawdown,
-                "regime_ok": filter_regime,
-            },
+            'signal': signal,
+            'probability': proba,
+            'P_ml': P_ml,
+            'threshold': threshold,
+            'filters_pass': filters_pass,
+            'filter_details': {
+                'crisis_ok': filter_crisis,
+                'drawdown_ok': filter_drawdown,
+                'regime_ok': filter_regime,
+            }
         }
 
-    def generate_signals_batch(
-        self,
-        df: pd.DataFrame,
-        threshold: float = 0.70,
-    ) -> pd.DataFrame:
+    def generate_signals_batch(self, df: pd.DataFrame, threshold: float = 0.70) -> pd.DataFrame:
         """Генерировать сигналы для всего DataFrame."""
         result = df.copy()
-
-        # Получить features как DataFrame (сохраняет column names)
-        feature_cols = [c for c in df.columns if c != "target"]
+        feature_cols = [c for c in df.columns if c != 'target']
         features_df = df[feature_cols]
-
-        # Предсказать (передаём DataFrame, не numpy)
+        
         probabilities = self.predict_proba(features_df)
-
-        result["ml_proba"] = probabilities
-        result["ml_signal"] = (probabilities >= threshold).astype(int)
-
+        result['ml_proba'] = probabilities
+        result['ml_signal'] = (probabilities >= threshold).astype(int)
+        
         return result
 
     def evaluate(
@@ -279,47 +169,24 @@ class XGBoostMLStrategyV3:
     ) -> Dict:
         """Оценить качество модели."""
         from sklearn.metrics import (
-            roc_auc_score,
-            f1_score,
-            precision_score,
-            recall_score,
-            accuracy_score,
+            roc_auc_score, f1_score, precision_score, 
+            recall_score, accuracy_score,
         )
-
+        
         y_proba = self.predict_proba(X)
         y_pred = (y_proba >= threshold).astype(int)
-
+        
         return {
-            "auc": roc_auc_score(y, y_proba),
-            "f1": f1_score(y, y_pred),
-            "precision": precision_score(y, y_pred, zero_division=0),
-            "recall": recall_score(y, y_pred, zero_division=0),
-            "accuracy": accuracy_score(y, y_pred),
-            "threshold": threshold,
-            "samples": len(y),
-            "class_balance": float(y.mean()),
-        }
-
-    def find_optimal_threshold(
-        self,
-        X: Union[pd.DataFrame, np.ndarray],
-        y: Union[pd.Series, np.ndarray],
-    ) -> Dict:
-        """Найти оптимальный threshold по F1."""
-        from sklearn.metrics import precision_recall_curve
-
-        y_proba = self.predict_proba(X)
-        precision, recall, thresholds = precision_recall_curve(y, y_proba)
-        f1_scores = 2 * (precision * recall) / (precision + recall + 1e-8)
-        best_idx = np.argmax(f1_scores[:-1])
-
-        return {
-            "optimal_threshold": float(thresholds[best_idx]),
-            "best_f1": float(f1_scores[best_idx]),
-            "precision_at_best": float(precision[best_idx]),
-            "recall_at_best": float(recall[best_idx]),
+            'auc': roc_auc_score(y, y_proba),
+            'f1': f1_score(y, y_pred),
+            'precision': precision_score(y, y_pred, zero_division=0),
+            'recall': recall_score(y, y_pred, zero_division=0),
+            'accuracy': accuracy_score(y, y_pred),
+            'threshold': threshold,
+            'samples': len(y),
+            'class_balance': float(y.mean()),
         }
 
     def __repr__(self) -> str:
-        status = "loaded" if self.model else "not loaded"
-        return f"XGBoostMLStrategyV3(model={status})"
+        status = 'loaded' if self.model else 'not loaded'
+        return f'XGBoostMLStrategyV3(model={status})'
