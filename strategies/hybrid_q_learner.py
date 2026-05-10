@@ -451,7 +451,22 @@ class HybridQLearner:
             'gamma': self.gamma,
             'weights_shape': list(self.weights.shape),
         }
-        
+
+        # Sanitize data: replace NaN, Inf, -Inf with 0.0
+        def sanitize_value(v):
+            if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+                return 0.0
+            elif isinstance(v, list):
+                return [sanitize_value(x) for x in v]
+            else:
+                return v
+
+        original_data = str(data)  # For comparison
+        data = {k: sanitize_value(v) for k, v in data.items()}
+
+        if str(data) != original_data:
+            logger.error('Corrupted weights detected during save, sanitized')
+
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
     
