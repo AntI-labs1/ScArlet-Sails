@@ -29,6 +29,7 @@ class FeatureEngine:
     def __init__(self, config):
         self.config = config
         self.normalize = config.get("features", {}).get("normalize", True)
+        self.base_timeframe = config.get("base_timeframe", "15m")
         self.scaler = None
 
         # Feature list (matches model exactly)
@@ -75,6 +76,20 @@ class FeatureEngine:
             f"Features: {len(self.feature_names)}, Normalize: {self.normalize}"
         )
 
+    def _infer_timeframe(self, df) -> str:
+        """Infer timeframe from DataFrame index"""
+        freq = pd.infer_freq(df.index)
+        if freq == '15T':
+            return "15m"
+        elif freq == 'H':
+            return "1h"
+        elif freq == '4H':
+            return "4h"
+        elif freq == 'D':
+            return "1d"
+        else:
+            raise ValueError(f"Unsupported timeframe: {freq}")
+
     def calculate_features(self, df_15m, df_1h=None, df_4h=None, df_1d=None):
         """
         Рассчитывает multi-timeframe признаки.
@@ -88,6 +103,14 @@ class FeatureEngine:
         Returns:
             DataFrame с 31 признаком
         """
+
+        # Validate input
+        if df_15m.empty:
+            raise ValueError("Empty DataFrame provided for 15m data")
+
+        inferred_tf = self._infer_timeframe(df_15m)
+        if inferred_tf != self.base_timeframe:
+            raise ValueError(f'CRITICAL: Timeframe mismatch. Expected {self.base_timeframe}, got {inferred_tf}')
 
         # Base features from 15m
         features_15m = self._calculate_timeframe_features(df_15m, "15m", full=True)

@@ -17,13 +17,15 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Any, Protocol
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+import random
 
 from .data_loader import load_market_data, AVAILABLE_COINS, AVAILABLE_TIMEFRAMES, get_bars_per_year
 from .trade_logger import TradeLogger, Trade
 from .position_sizer import PositionSizer, RiskManager, PositionConfig, RiskLimits
 from .metrics_calculator import MetricsCalculator, BacktestMetrics
+from .execution_model import ExecutionModel
 
 
 class Strategy(Protocol):
@@ -68,6 +70,11 @@ class BacktestConfig:
     
     # Execution
     entry_on_close: bool = True  # Enter at close of signal bar
+    
+    # Latency simulation
+    simulate_latency: bool = True
+    latency_min_ms: float = 50.0  # Minimum latency in milliseconds
+    latency_max_ms: float = 200.0  # Maximum latency in milliseconds
     
     # Output
     verbose: bool = True
@@ -146,6 +153,9 @@ class BacktestEngine:
         ))
         
         self.trade_logger = TradeLogger()
+        
+        # Initialize execution model for realistic slippage by asset tier
+        self.execution_model = ExecutionModel(commission=self.config.commission)
     
     def run(
         self,
@@ -284,9 +294,9 @@ class BacktestEngine:
             
             # Process signal
             if signal == 1 and position == 0:
-                # Open long position
+                # Open long position (with latency simulation)
                 capital, position, entry_price = self._open_position(
-                    timestamp, price, capital, coin, timeframe
+                    timestamp, price, capital, coin, timeframe, df=df, current_idx=i
                 )
             
             elif signal == -1 and position > 0:
@@ -316,6 +326,49 @@ class BacktestEngine:
         
         return equity_curve, self.trade_logger.trades
     
+    def _simulate_latency_price_impact(
+        self,
+        price: float,
+        df: pd.DataFrame,
+        current_idx: int,
+        latency_ms: float,
+    ) -> float:
+        """
+        Simulate price movement during latency period.
+        
+        Uses recent volatility to estimate price drift during latency.
+        
+        Args:
+            price: Reference price
+            df: OHLCV DataFrame
+            current_idx: Current bar index
+            latency_ms: Latency in milliseconds
+        
+        Returns:
+            Adjusted price after latency
+        """
+        if not self.config.simulate_latency:
+            return price
+        
+        # Convert latency to fraction of bar (assuming 15m = 900000ms)
+        # For different timeframes, adjust accordingly
+        bar_duration_ms = 900000  # 15 minutes default
+        latency_fraction = latency_ms / bar_duration_ms
+        
+        # Calculate recent volatility (last 20 bars)
+        lookback = min(20, current_idx)
+        if lookback > 0:
+            recent_returns = df['close'].iloc[current_idx - lookback:current_idx].pct_change().dropna()
+            if len(recent_returns) > 0:
+                volatility = recent_returns.std()
+                # Estimate price drift: random walk with volatility
+                # Scale by latency fraction
+                drift = np.random.normal(0, volatility * np.sqrt(latency_fraction))
+                adjusted_price = price * (1 + drift)
+                return adjusted_price
+        
+        return price
+    
     def _open_position(
         self,
         timestamp: datetime,
@@ -323,8 +376,20 @@ class BacktestEngine:
         capital: float,
         coin: str,
         timeframe: str,
+        df: Optional[pd.DataFrame] = None,
+        current_idx: Optional[int] = None,
     ) -> tuple[float, float, float]:
-        """Open a new position."""
+        """Open a new position with realistic execution costs and latency."""
+        # Simulate latency (50-200ms)
+        if self.config.simulate_latency:
+            latency_ms = random.uniform(
+                self.config.latency_min_ms,
+                self.config.latency_max_ms
+            )
+            # Adjust price for latency impact
+            if df is not None and current_idx is not None:
+                price = self._simulate_latency_price_impact(price, df, current_idx, latency_ms)
+        
         # Calculate position size
         size = self.position_sizer.calculate_size(capital, price)
         position_value = size * price
@@ -334,13 +399,18 @@ class BacktestEngine:
         if not can_trade:
             return capital, 0.0, 0.0
         
-        # Calculate costs
-        commission = position_value * self.config.commission
-        slippage = position_value * self.config.slippage
-        total_cost = commission + slippage
+        # Calculate execution costs using asset tier model
+        execution_costs = self.execution_model.calculate_execution_costs(
+            coin=coin,
+            reference_price=price,
+            position_size=size,
+            direction=1,  # Buy
+        )
         
-        # Adjust for slippage (worse entry)
-        adjusted_price = price * (1 + self.config.slippage)
+        fill_price = execution_costs['fill_price']
+        commission = execution_costs['commission']
+        slippage_cost = execution_costs['slippage_cost']
+        total_cost = execution_costs['total_cost']
         
         # Execute
         capital -= position_value + total_cost
@@ -348,11 +418,11 @@ class BacktestEngine:
         # Log trade
         self.trade_logger.open_trade(
             entry_time=timestamp,
-            entry_price=adjusted_price,
+            entry_price=fill_price,
             size=size,
             direction=1,
             commission=commission,
-            slippage=slippage,
+            slippage=slippage_cost,
             strategy='backtest',
             coin=coin,
             timeframe=timeframe,
@@ -360,7 +430,7 @@ class BacktestEngine:
         
         self.risk_manager.on_trade_open()
         
-        return capital, size, adjusted_price
+        return capital, size, fill_price
     
     def _close_position(
         self,
@@ -372,22 +442,29 @@ class BacktestEngine:
         timeframe: str,
         reason: str = 'signal',
     ) -> tuple[float, float]:
-        """Close existing position."""
-        # Calculate costs
-        position_value = position * price
-        commission = position_value * self.config.commission
+        """Close existing position with realistic execution costs."""
+        # Calculate execution costs using asset tier model
+        execution_costs = self.execution_model.calculate_execution_costs(
+            coin=coin,
+            reference_price=price,
+            position_size=position,
+            direction=-1,  # Sell
+        )
         
-        # Adjust for slippage (worse exit)
-        adjusted_price = price * (1 - self.config.slippage)
-        actual_value = position * adjusted_price
+        fill_price = execution_costs['fill_price']
+        commission = execution_costs['commission']
+        slippage_cost = execution_costs['slippage_cost']
+        
+        # Calculate actual value received (after slippage and commission)
+        actual_value = position * fill_price - commission
         
         # Execute
-        capital += actual_value - commission
+        capital += actual_value
         
         # Close trade in logger
         trade = self.trade_logger.close_trade(
             exit_time=timestamp,
-            exit_price=adjusted_price,
+            exit_price=fill_price,
             commission=commission,
         )
         

@@ -24,7 +24,11 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple
+from datetime import datetime, timedelta
 import warnings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,6 +39,8 @@ class OODState:
     ood_penalty: float
     percentile: float  # Where this sample falls in training distribution
     confidence_multiplier: float  # 1.0 = normal, < 1.0 = OOD
+    safe_mode_active: bool = False  # Safe Mode state (with hysteresis)
+    threshold_used: float = 0.0  # Actual threshold used for decision
 
 
 class OODDetector:
@@ -50,16 +56,25 @@ class OODDetector:
         threshold_sigma: float = 3.0,
         kappa: float = 0.1,
         min_confidence: float = 0.3,
+        hysteresis_enter: float = 1.0,  # Enter Safe Mode at threshold * 1.0
+        hysteresis_exit: float = 0.9,    # Exit Safe Mode at threshold * 0.9
+        cooldown_hours: float = 4.0,     # Minimum time in Safe Mode (hours)
     ):
         """
         Args:
             threshold_sigma: Number of standard deviations for OOD threshold
             kappa: Penalty scaling factor
             min_confidence: Minimum confidence multiplier for extreme OOD
+            hysteresis_enter: Multiplier for entering Safe Mode (1.0 = exact threshold)
+            hysteresis_exit: Multiplier for exiting Safe Mode (0.9 = 10% buffer)
+            cooldown_hours: Minimum hours to stay in Safe Mode before allowing exit
         """
         self.threshold_sigma = threshold_sigma
         self.kappa = kappa
         self.min_confidence = min_confidence
+        self.hysteresis_enter = hysteresis_enter
+        self.hysteresis_exit = hysteresis_exit
+        self.cooldown_hours = cooldown_hours
         
         self.mean: Optional[np.ndarray] = None
         self.cov_inv: Optional[np.ndarray] = None
@@ -69,6 +84,10 @@ class OODDetector:
         
         # For percentile estimation
         self._training_distances: Optional[np.ndarray] = None
+        
+        # FIX: Safe Mode Flickering - Stateful hysteresis and cooldown
+        self.is_safe_mode: bool = False
+        self.safe_mode_start_time: Optional[datetime] = None
     
     def fit(self, X: np.ndarray, store_distances: bool = True) -> 'OODDetector':
         """
@@ -118,6 +137,11 @@ class OODDetector:
             self._training_distances = np.array(distances)
         
         self._fitted = True
+        
+        # Reset Safe Mode state on fit
+        self.is_safe_mode = False
+        self.safe_mode_start_time = None
+        
         return self
     
     def _compute_distance(self, x: np.ndarray) -> float:
@@ -125,15 +149,24 @@ class OODDetector:
         diff = x - self.mean
         return np.sqrt(np.dot(np.dot(diff, self.cov_inv), diff))
     
-    def detect(self, x: np.ndarray) -> OODState:
+    def detect(
+        self,
+        x: np.ndarray,
+        timestamp: Optional[datetime] = None,
+    ) -> OODState:
         """
-        Detect if input is out-of-distribution.
+        Detect if input is out-of-distribution with hysteresis and cooldown.
+        
+        FIX: Safe Mode Flickering - Implements stateful hysteresis and cooldown:
+        - Enter Safe Mode: distance > threshold * hysteresis_enter (1.0)
+        - Exit Safe Mode: distance < threshold * hysteresis_exit (0.9) AND cooldown expired
         
         Args:
             x: Input features, shape (n_features,) or (1, n_features)
+            timestamp: Current timestamp for cooldown calculation (defaults to now)
             
         Returns:
-            OODState with detection results
+            OODState with detection results including safe_mode_active
         """
         if not self._fitted:
             return OODState(
@@ -142,6 +175,8 @@ class OODDetector:
                 ood_penalty=0.0,
                 percentile=50.0,
                 confidence_multiplier=1.0,
+                safe_mode_active=False,
+                threshold_used=0.0,
             )
         
         # Flatten if needed
@@ -155,12 +190,56 @@ class OODDetector:
                 ood_penalty=0.0,
                 percentile=50.0,
                 confidence_multiplier=1.0,
+                safe_mode_active=False,
+                threshold_used=0.0,
             )
+        
+        # Get current time for cooldown
+        if timestamp is None:
+            timestamp = datetime.now()
         
         # Compute distance
         distance = self._compute_distance(x)
         
-        # Check if OOD
+        # HYSTERESIS LOGIC: Prevent flickering
+        enter_threshold = self.threshold * self.hysteresis_enter  # 1.0 * threshold
+        exit_threshold = self.threshold * self.hysteresis_exit    # 0.9 * threshold
+        
+        # Determine Safe Mode state
+        if not self.is_safe_mode:
+            # Not in Safe Mode: Check if we should enter
+            if distance > enter_threshold:
+                # Enter Safe Mode
+                self.is_safe_mode = True
+                self.safe_mode_start_time = timestamp
+                logger.warning(
+                    f"OOD: Entering Safe Mode (distance={distance:.2f} > "
+                    f"enter_threshold={enter_threshold:.2f})"
+                )
+        else:
+            # Already in Safe Mode: Check if we can exit
+            cooldown_expired = False
+            if self.safe_mode_start_time is not None:
+                elapsed = timestamp - self.safe_mode_start_time
+                cooldown_expired = elapsed >= timedelta(hours=self.cooldown_hours)
+            
+            # Exit conditions: distance below exit threshold AND cooldown expired
+            if distance < exit_threshold and cooldown_expired:
+                # Exit Safe Mode
+                self.is_safe_mode = False
+                elapsed_str = str(elapsed).split('.')[0] if cooldown_expired else "N/A"
+                logger.info(
+                    f"OOD: Exiting Safe Mode (distance={distance:.2f} < "
+                    f"exit_threshold={exit_threshold:.2f}, cooldown={elapsed_str})"
+                )
+            elif distance < exit_threshold and not cooldown_expired:
+                # Still in cooldown - maintain Safe Mode
+                remaining = timedelta(hours=self.cooldown_hours) - elapsed
+                logger.debug(
+                    f"OOD: Safe Mode maintained (cooldown remaining: {remaining})"
+                )
+        
+        # Check if OOD (for backward compatibility)
         is_ood = distance > self.threshold
         
         # Compute penalty
@@ -185,12 +264,17 @@ class OODDetector:
         else:
             confidence_multiplier = 1.0
         
+        # Determine threshold used for decision
+        threshold_used = enter_threshold if not self.is_safe_mode else exit_threshold
+        
         return OODState(
             mahalanobis_distance=distance,
             is_ood=is_ood,
             ood_penalty=ood_penalty,
             percentile=percentile,
             confidence_multiplier=confidence_multiplier,
+            safe_mode_active=self.is_safe_mode,
+            threshold_used=threshold_used,
         )
     
     def save(self, path: str):

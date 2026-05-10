@@ -161,6 +161,8 @@ class QuantSignals:
     p_ml: Optional[float] = None   # ML probability
     p_hyb: Optional[float] = None  # Hybrid probability
     agreement: Optional[float] = None  # 1 - max_spread
+    safe_mode: bool = False  # OOD Fallback: Safe Mode active
+    position_multiplier: float = 1.0  # Position size multiplier (0.2x in Safe Mode)
     
     def to_dict(self) -> Dict[str, Any]:
         return {

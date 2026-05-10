@@ -15,9 +15,13 @@ Output:
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional
+import logging
+import yaml
 
 from core.regime_detector import MarketRegime, RegimeState, REGIME_POSITION_MULTIPLIER
 from core.rolling_dispersion import DispersionState
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,13 +60,21 @@ class DynamicPositionSizer:
     
     def __init__(
         self,
+        config_path: Optional[str] = None,
         base_position: float = 0.25,
         max_position: float = 1.5,
         conviction_weight: float = 0.5,
         agreement_weight: float = 0.5,
     ):
+        if config_path:
+            with open(config_path) as f:
+                self.config = yaml.safe_load(f)
+            self.max_position = self.config['trading']['risk_management']['max_position']
+        else:
+            logger.warning('Using HARDCODED risk limits!')
+            self.max_position = 0.95
+
         self.base_position = base_position
-        self.max_position = max_position
         self.conviction_weight = conviction_weight
         self.agreement_weight = agreement_weight
     

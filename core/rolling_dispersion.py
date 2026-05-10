@@ -2,8 +2,8 @@
 Rolling Dispersion Calculator for Real-Time Position Sizing.
 
 Tracks historical dispersion between P_rb, P_ml, P_hyb over rolling window.
-NOTE: Inverted logic - high dispersion → high multiplier (more position).
-This reflects that divergence may indicate trading opportunities.
+CORRECTED LOGIC: Low dispersion (agreement) → high multiplier (more position).
+High dispersion (chaos) → low multiplier (less position).
 
 Integration: QuantAggregator._suggest_position_size()
 """
@@ -33,8 +33,8 @@ class RollingDispersionCalculator:
     Logic:
     - Track std(P_rb, P_ml, P_hyb) over rolling window
     - Compare current dispersion to historical distribution
-    - NOTE: Inverted logic - high dispersion → high multiplier (more position)
-    - Low dispersion → low multiplier (less position)
+    - CORRECTED: Low dispersion (agreement) → high multiplier (more position)
+    - High dispersion (chaos) → low multiplier (less position)
     
     Usage:
         calc = RollingDispersionCalculator(window=100)
@@ -156,30 +156,32 @@ class RollingDispersionCalculator:
         """
         Calculate position multiplier based on dispersion.
         
-        INVERTED LOGIC (based on empirical data):
-        - High dispersion (percentile→1) → high multiplier (more position)
-        - Low dispersion (percentile→0) → low multiplier (less position)
+        CORRECTED LOGIC:
+        - Low dispersion (percentile→0, agreement) → high multiplier (max_mult = 1.5)
+        - High dispersion (percentile→1, chaos) → low multiplier (min_mult = 0.3)
         
-        Rationale: High dispersion = one strategy sees something others don't
-                   Low dispersion = consensus = already priced in
+        Rationale: Agreement between models = high confidence = larger position
+                   Disagreement = uncertainty = smaller position
         """
-        # Before enough samples: use simple threshold logic (also inverted)
+        # Before enough samples: use simple threshold logic
         if n_samples < self.min_samples:
             if current_std <= self.low_threshold:
-                return self.min_mult  # Low dispersion → small position
+                return self.max_mult  # Low dispersion → large position (agreement)
             elif current_std >= self.high_threshold:
-                return self.max_mult  # High dispersion → large position
+                return self.min_mult  # High dispersion → small position (chaos)
             else:
-                # Linear interpolation (inverted)
+                # Linear interpolation (inverted: low std → high mult)
                 ratio = (current_std - self.low_threshold) / (
                     self.high_threshold - self.low_threshold
                 )
-                return self.min_mult + ratio * (self.max_mult - self.min_mult)
+                # Invert: as ratio increases, multiplier decreases
+                return self.max_mult - ratio * (self.max_mult - self.min_mult)
         
-        # After warmup: use percentile (inverted)
-        # percentile=0 (low dispersion) → min_mult
-        # percentile=1 (high dispersion) → max_mult
-        return self.min_mult + percentile * (self.max_mult - self.min_mult)
+        # After warmup: use percentile (CORRECTED)
+        # percentile=0 (low dispersion, agreement) → max_mult
+        # percentile=1 (high dispersion, chaos) → min_mult
+        # Formula: multiplier = max_mult - (percentile * (max_mult - min_mult))
+        return self.max_mult - percentile * (self.max_mult - self.min_mult)
     
     def get_state(self) -> Optional[DispersionState]:
         """Get last computed state without updating."""
@@ -223,7 +225,7 @@ def integrate_dispersion_with_position_sizing(
     Returns:
         (adjusted_position, justification)
     """
-    # Apply dispersion multiplier directly (already inverted in _calculate_multiplier)
+    # Apply dispersion multiplier (corrected logic: agreement → high multiplier)
     adjusted_mult = dispersion_state.confidence_multiplier
     adjusted = base_position * adjusted_mult
     

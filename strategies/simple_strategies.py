@@ -212,11 +212,13 @@ class CombinedStrategy:
     
     def __init__(
         self,
+        ood_detector=None,
         rsi_period: int = 14,
         ma_period: int = 50,
         bb_period: int = 20,
         bb_std: float = 2.0,
     ):
+        self.ood_detector = ood_detector
         self.rsi_period = rsi_period
         self.ma_period = ma_period
         self.bb_period = bb_period
@@ -224,6 +226,9 @@ class CombinedStrategy:
     
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         """Generate signals using multiple indicators."""
+        if self.ood_detector and self.ood_detector.is_safe_mode:
+            return pd.Series(0, index=df.index) # Silence
+
         close = df['close']
         
         # Calculate indicators

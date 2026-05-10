@@ -29,7 +29,7 @@ class TechnicalFilters:
     def __init__(self, config: Dict = None):
         self.config = config or {}
         
-        # RSI parameters
+        # RSI parameters (defaults, will be overridden by adaptive method)
         self.rsi_period = self.config.get('rsi_period', 14)
         self.rsi_lower = self.config.get('rsi_lower', 20)
         self.rsi_upper = self.config.get('rsi_upper', 80)
@@ -42,6 +42,36 @@ class TechnicalFilters:
         self.bb_std = self.config.get('bb_std', 2.0)
         
         logger.info("TechnicalFilters initialized")
+    
+    def _get_adaptive_rsi(self, regime: str) -> Tuple[int, int]:
+        """
+        Get adaptive RSI thresholds based on market regime.
+        
+        Args:
+            regime: Market regime string ('low_vol', 'normal', 'high_vol', 'crisis')
+                   or uppercase variants ('LOW_VOL', 'NORMAL', 'HIGH_VOL', 'CRISIS')
+        
+        Returns:
+            Tuple of (rsi_lower, rsi_upper) thresholds
+        """
+        regime_lower = regime.lower()
+        
+        if regime_lower in ['low_vol', 'lowvol']:
+            # LOW_VOL: 35/65 (чувствительный вход)
+            return 35, 65
+        elif regime_lower in ['normal', 'norm']:
+            # NORMAL: 30/70 (классика)
+            return 30, 70
+        elif regime_lower in ['high_vol', 'highvol', 'volatile']:
+            # HIGH_VOL: 20/80 (фильтр шума)
+            return 20, 80
+        elif regime_lower in ['crisis', 'crash']:
+            # CRISIS: 10/90 (экстремальная паника)
+            return 10, 90
+        else:
+            # Default to normal if regime unknown
+            logger.warning(f"Unknown regime '{regime}', using NORMAL thresholds")
+            return 30, 70
     
     def calculate_rsi(self, prices: pd.Series, period: int = None) -> pd.Series:
         """Calculate RSI indicator"""
@@ -57,10 +87,17 @@ class TechnicalFilters:
         
         return rsi
     
-    def rsi_filter(self, df: pd.DataFrame) -> pd.Series:
-        """I₁: RSI filter"""
+    def rsi_filter(self, df: pd.DataFrame, regime: str = 'normal') -> pd.Series:
+        """
+        I₁: RSI filter with adaptive thresholds based on regime.
+        
+        Args:
+            df: DataFrame with price data
+            regime: Market regime for adaptive thresholds
+        """
         rsi = self.calculate_rsi(df['close'])
-        filter_signal = ((rsi > self.rsi_lower) & (rsi < self.rsi_upper)).astype(int)
+        rsi_lower, rsi_upper = self._get_adaptive_rsi(regime)
+        filter_signal = ((rsi > rsi_lower) & (rsi < rsi_upper)).astype(int)
         return filter_signal
     
     def ema_filter(self, df: pd.DataFrame) -> pd.Series:
@@ -88,11 +125,17 @@ class TechnicalFilters:
         
         return filter_signal
     
-    def calculate_all_filters(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate all filters and return as DataFrame"""
+    def calculate_all_filters(self, df: pd.DataFrame, regime: str = 'normal') -> pd.DataFrame:
+        """
+        Calculate all filters and return as DataFrame.
+        
+        Args:
+            df: DataFrame with price data
+            regime: Market regime for adaptive RSI thresholds
+        """
         filters = pd.DataFrame(index=df.index)
         
-        filters['I1_rsi'] = self.rsi_filter(df)
+        filters['I1_rsi'] = self.rsi_filter(df, regime=regime)
         filters['I2_ema'] = self.ema_filter(df)
         filters['I3_volume'] = self.volume_filter(df)
         filters['I4_bb'] = self.bollinger_filter(df)
@@ -141,10 +184,13 @@ class RuleBasedStrategy:
         # Component 2: Technical filters
         df_history = df.iloc[:idx+1]
         
+        # Get regime for adaptive RSI thresholds
+        regime = market_state.get('regime', 'normal')
+        
         if len(df_history) < 50:
             filters_product = 0
         else:
-            filters = self.technical_filters.calculate_all_filters(df_history)
+            filters = self.technical_filters.calculate_all_filters(df_history, regime=regime)
             filters_product = filters['product'].iloc[-1]
         
         # Component 3: Costs

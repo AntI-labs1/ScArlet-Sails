@@ -20,6 +20,12 @@ from core.rolling_dispersion import RollingDispersionCalculator, integrate_dispe
 from core.regime_detector import RegimeDetector
 from core.dynamic_position_sizer import DynamicPositionSizer, PositionSizingInput
 
+# Order book L2 pressure
+from data.features.orderbook_features import OrderBookFeatures
+
+# OOD detector for Safe Mode
+from core.ood_detector import OODDetector
+
 # Council contracts
 from council.contracts import (
     QuantSignals,
@@ -78,6 +84,13 @@ class QuantAggregator:
         self._position_sizer = DynamicPositionSizer()
         self._current_drawdown = 0.0
         self._last_ohlcv = None
+        # Order book L2 pressure calculator
+        self._orderbook_features = OrderBookFeatures(n_levels=10)
+        self._book_pressure_threshold = 0.3  # Minimum pressure to allow trade
+        # OOD detector for Safe Mode
+        self._ood_detector: Optional[OODDetector] = None
+        self._safe_mode_multiplier = 0.2  # 0.2x position size in Safe Mode
+        self._ood_percentile_threshold = 0.95  # 95th percentile = Safe Mode trigger
     
     def register_strategy(self, name: str, strategy: Any) -> None:
         """
@@ -89,6 +102,16 @@ class QuantAggregator:
         """
         self._strategies[name] = strategy
         logger.info(f"Registered strategy: {name}")
+    
+    def set_ood_detector(self, ood_detector: OODDetector) -> None:
+        """
+        Set OOD detector for Safe Mode activation.
+        
+        Args:
+            ood_detector: OODDetector instance
+        """
+        self._ood_detector = ood_detector
+        logger.info("OOD detector registered for Safe Mode")
     
     def aggregate(
         self,
@@ -118,6 +141,83 @@ class QuantAggregator:
         p_ml = self._extract_signal(results.get('xgboost_ml'))
         p_hyb = self._extract_signal(results.get('hybrid'))
         
+        # L2 Pressure Integration: Check orderbook pressure (Optional - FIX: Data Dead End)
+        book_pressure_blocked = False
+        if market_state and 'orderbook' in market_state:
+            orderbook = market_state.get('orderbook')
+            # FIX: Optional L2 - Don't break backtests on old data
+            if orderbook is not None:
+                try:
+                    ob_features = self._orderbook_features.extract_all_features(orderbook)
+                    book_pressure = ob_features.get('ob_imbalance', 0.0)  # Range: [-1, 1]
+                    
+                    # Determine intended direction from signals
+                    avg_signal = np.mean([v for v in [p_rb, p_ml, p_hyb] if v is not None])
+                    intended_long = avg_signal > 0.5
+                    
+                    # Block if book pressure contradicts signal
+                    if intended_long and book_pressure < -self._book_pressure_threshold:
+                        # Want to go long, but book shows selling pressure
+                        book_pressure_blocked = True
+                        logger.warning(
+                            f"L2 Pressure Block: Long signal (avg={avg_signal:.2f}) "
+                            f"contradicted by book pressure ({book_pressure:.2f})"
+                        )
+                    elif not intended_long and book_pressure > self._book_pressure_threshold:
+                        # Want to go short, but book shows buying pressure
+                        book_pressure_blocked = True
+                        logger.warning(
+                            f"L2 Pressure Block: Short signal (avg={avg_signal:.2f}) "
+                            f"contradicted by book pressure ({book_pressure:.2f})"
+                        )
+                except Exception as e:
+                    # FIX: Don't break if L2 data is missing or invalid
+                    logger.debug(f"L2 pressure check skipped (data unavailable): {e}")
+            else:
+                # No orderbook data - neutral (don't block, don't confirm)
+                logger.debug("L2 pressure check skipped: orderbook data not available")
+        
+        # Apply L2 pressure filter: if blocked, reduce signals to neutral
+        if book_pressure_blocked:
+            p_rb = 0.5 if p_rb is not None else None
+            p_ml = 0.5 if p_ml is not None else None
+            p_hyb = 0.5 if p_hyb is not None else None
+            logger.info("Signals neutralized due to L2 pressure contradiction")
+        
+        # OOD Fallback: Safe Mode check (with hysteresis and cooldown)
+        safe_mode_active = False
+        if self._ood_detector is not None and market_state:
+            try:
+                # Get current state features for OOD detection
+                state_features = market_state.get('state_features')
+                timestamp = market_state.get('timestamp')
+                if state_features is not None:
+                    # Calculate OOD state (includes hysteresis and cooldown logic)
+                    ood_state = self._ood_detector.detect(state_features, timestamp=timestamp)
+                    
+                    # Use safe_mode_active from detector (includes hysteresis)
+                    safe_mode_active = ood_state.safe_mode_active
+                    
+                    if safe_mode_active:
+                        logger.warning(
+                            f"OOD Fallback: Safe Mode active "
+                            f"(distance: {ood_state.mahalanobis_distance:.2f}, "
+                            f"percentile: {ood_state.percentile:.1%}, "
+                            f"threshold_used: {ood_state.threshold_used:.2f})"
+                        )
+            except Exception as e:
+                logger.warning(f"OOD detection failed: {e}")
+        
+        # Apply Safe Mode: use only Rule-Based, ignore ML, reduce position size
+        if safe_mode_active:
+            # In Safe Mode: only use Rule-Based signals, ignore ML
+            p_ml = None  # Disable ML in Safe Mode
+            p_hyb = p_rb  # Use only Rule-Based
+            logger.info(
+                f"Safe Mode: Using only Rule-Based strategy (P_rb={p_rb:.2f}), "
+                f"position multiplier={self._safe_mode_multiplier:.1f}x"
+            )
+        
         # Build QuantSignals
         signals = QuantSignals(
             p_rb=p_rb,
@@ -127,6 +227,14 @@ class QuantAggregator:
         
         # Calculate agreement
         signals.compute_agreement()
+        
+        # Store Safe Mode status in signals metadata
+        if safe_mode_active:
+            signals.safe_mode = True
+            signals.position_multiplier = self._safe_mode_multiplier
+        else:
+            signals.safe_mode = False
+            signals.position_multiplier = 1.0
         
         return signals
     
@@ -507,7 +615,7 @@ def create_quant_aggregator_with_strategies(
     # Try to import and register Hybrid
     if include_hybrid:
         try:
-            from strategies.hybrid_v2 import HybridStrategy
+            from strategies.simple_strategies import HybridStrategy
             hyb_strategy = HybridStrategy()
             aggregator.register_strategy('hybrid', hyb_strategy)
             logger.info("Registered Hybrid strategy")

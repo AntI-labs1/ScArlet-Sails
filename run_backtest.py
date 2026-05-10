@@ -38,6 +38,7 @@ from strategies import (
     RuleBasedStrategy,
     HybridStrategy,
 )
+from core.ood_detector import OODDetector
 
 
 # Strategy mapping
@@ -194,8 +195,17 @@ def run_single_backtest(
         print(f"Error: Unknown strategy '{strategy_name}'")
         print(f"Available: {list(STRATEGIES.keys())}")
         return None
-    
-    strategy = strategy_class()
+
+    # Initialize OOD detector for strategies that need it
+    ood_detector = None
+    if strategy_name == 'combined':
+        ood_detector = OODDetector()
+
+    # Create strategy
+    if strategy_name == 'combined':
+        strategy = strategy_class(ood_detector=ood_detector)
+    else:
+        strategy = strategy_class()
     
     # Create config
     config = BacktestConfig(

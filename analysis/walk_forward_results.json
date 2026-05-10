@@ -4,62 +4,77 @@
   "threshold": 0.7,
   "folds": [
     {
-      "sharpe": 1.0383544679973082,
-      "total_return": 10.07218437909263,
-      "win_rate": 62.39316239316239,
-      "max_dd": -11.03376738184425,
-      "n_trades": 117,
+      "sharpe": 1.2531710579357107,
+      "total_return": 11.82445218180298,
+      "win_rate": 62.93103448275862,
+      "max_dd": -9.447036966202786,
+      "n_trades": 116,
       "fold": 1,
-      "date_range": "2025-01-12 to 2025-10-24",
-      "n_samples": 27324
+      "date_range": "2025-01-17 to 2025-10-24",
+      "train_end_date": "2025-01-12",
+      "test_start_date": "2025-01-17",
+      "embargo_gap_bars": 480,
+      "n_samples": 26844
     },
     {
-      "sharpe": 2.29929924608479,
-      "total_return": 46.757373713993935,
-      "win_rate": 64.59627329192547,
-      "max_dd": -26.994754793081704,
-      "n_trades": 161,
+      "sharpe": 2.3360976595650307,
+      "total_return": 47.05035067713151,
+      "win_rate": 65.18987341772153,
+      "max_dd": -27.34889002276934,
+      "n_trades": 158,
       "fold": 2,
-      "date_range": "2024-04-03 to 2025-01-12",
-      "n_samples": 27328
+      "date_range": "2024-04-08 to 2025-01-12",
+      "train_end_date": "2024-04-03",
+      "test_start_date": "2024-04-08",
+      "embargo_gap_bars": 480,
+      "n_samples": 26848
     },
     {
-      "sharpe": 2.138786951917355,
-      "total_return": 27.857436732743214,
-      "win_rate": 62.616822429906534,
-      "max_dd": -7.912987230300665,
-      "n_trades": 107,
+      "sharpe": 2.097418924183576,
+      "total_return": 26.953277327311465,
+      "win_rate": 65.26315789473685,
+      "max_dd": -7.912987230300668,
+      "n_trades": 95,
       "fold": 3,
-      "date_range": "2023-06-23 to 2024-04-03",
-      "n_samples": 27328
+      "date_range": "2023-06-28 to 2024-04-03",
+      "train_end_date": "2023-06-23",
+      "test_start_date": "2023-06-28",
+      "embargo_gap_bars": 480,
+      "n_samples": 26848
     },
     {
-      "sharpe": 2.153036643936788,
-      "total_return": 41.55993533789783,
-      "win_rate": 70.98765432098766,
-      "max_dd": -17.01258627804164,
-      "n_trades": 162,
+      "sharpe": 2.1922683447741256,
+      "total_return": 40.374965791002616,
+      "win_rate": 70.39473684210526,
+      "max_dd": -17.012586278041656,
+      "n_trades": 152,
       "fold": 4,
-      "date_range": "2022-09-11 to 2023-06-23",
-      "n_samples": 27318
+      "date_range": "2022-09-16 to 2023-06-23",
+      "train_end_date": "2022-09-11",
+      "test_start_date": "2022-09-16",
+      "embargo_gap_bars": 480,
+      "n_samples": 26838
     },
     {
-      "sharpe": 6.937304469321018,
-      "total_return": 297.4986102407854,
-      "win_rate": 67.73333333333333,
-      "max_dd": -25.548398830421203,
-      "n_trades": 750,
+      "sharpe": 6.559549052969638,
+      "total_return": 274.7858488206838,
+      "win_rate": 66.98762035763411,
+      "max_dd": -25.54839883042121,
+      "n_trades": 727,
       "fold": 5,
-      "date_range": "2021-12-01 to 2022-09-11",
-      "n_samples": 27328
+      "date_range": "2021-12-06 to 2022-09-11",
+      "train_end_date": "2021-12-01",
+      "test_start_date": "2021-12-06",
+      "embargo_gap_bars": 480,
+      "n_samples": 26848
     }
   ],
   "summary": {
-    "avg_sharpe": 2.9133563558514517,
-    "avg_win_rate": 65.66544915386308,
-    "avg_max_dd": -17.70049890273789,
-    "sharpe_std": 2.0621784820545326,
-    "total_trades": 1297
+    "avg_sharpe": 2.8877010078856165,
+    "avg_win_rate": 66.15328459899128,
+    "avg_max_dd": -17.453979865547133,
+    "sharpe_std": 1.8743849571575126,
+    "total_trades": 1248
   },
-  "timestamp": "2025-12-12T13:39:15.654119"
+  "timestamp": "2026-01-04T15:25:44.197269"
 }
