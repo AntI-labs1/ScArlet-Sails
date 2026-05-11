@@ -39,12 +39,16 @@ class TestCouncilEndToEnd:
     
     @pytest.fixture
     def real_features(self):
-        """Load slice of real features."""
+        """Load slice of real features. Returns None if file missing OR if it
+        has fewer than 74 columns (stale on-disk artefact — XGBoost v3 expects 74).
+        """
         path = Path('data/features/BTC_USDT_15m_features.parquet')
-        if path.exists():
-            df = pd.read_parquet(path)
-            return df.iloc[-500:].copy()
-        return None
+        if not path.exists():
+            return None
+        df = pd.read_parquet(path)
+        if len(df.columns) < 74:
+            return None
+        return df.iloc[-500:].copy()
     
     def test_rule_based_generates_signals(self, sample_market_data):
         """RuleBasedStrategy generates valid signals."""

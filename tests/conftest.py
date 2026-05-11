@@ -10,6 +10,7 @@ are only created if a coin/TF parquet is missing.
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Iterable
 
@@ -61,7 +62,11 @@ def _ensure_fixture(coin: str, timeframe: str) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     n_bars = 4_000 if timeframe == "15m" else 1_000
     freq = _FREQ_MAP[timeframe]
-    seed = abs(hash((coin, timeframe))) % (2**32)
+    # Stable seed across Python processes — hashlib is deterministic, unlike
+    # builtin hash() which is randomized by PYTHONHASHSEED. Without this, each
+    # Kaggle run regenerates different synthetic data and backtest PnL drifts.
+    digest = hashlib.sha256(f"{coin}_{timeframe}".encode()).digest()
+    seed = int.from_bytes(digest[:4], "big")
     df = _synthetic_ohlcv(n_bars=n_bars, freq=freq, seed=seed)
     df.index.name = "timestamp"
     df.to_parquet(canonical)
