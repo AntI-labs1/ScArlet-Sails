@@ -14,8 +14,11 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 AVAILABLE_COINS = [
+    # Crypto (legacy — оставлены как baseline; см. revision 2026-05)
     'ALGO', 'AVAX', 'BTC', 'DOT', 'ENA', 'ETH',
-    'HBAR', 'LDO', 'LINK', 'LTC', 'ONDO', 'SOL', 'SUI', 'UNI'
+    'HBAR', 'LDO', 'LINK', 'LTC', 'ONDO', 'SOL', 'SUI', 'UNI',
+    # Precious metals (pivot 2026-05) — fetched via scripts/fetch_metals.py
+    'GOLD', 'SILVER', 'COPPER', 'PLATINUM',
 ]
 
 AVAILABLE_TIMEFRAMES = ['15m', '1h', '4h', '1d']
