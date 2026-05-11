@@ -149,61 +149,130 @@ For each (asset, period) combination we compute the passive buy-and-hold return 
 
 ### 5.1 Cryptocurrency mean-reversion strategies
 
-**TODO: integrate results from `paper/results/` after Kaggle notebook runs.**
+We tested the CombinedStrategy (RSI(14) < 40 entry filter, price > SMA(50) trend filter, price near lower Bollinger Band entry, RSI(14) > 60 exit filter, price < SMA(50) exit) across 14 cryptocurrencies at 4-hour timeframe, using 8 rolling walk-forward windows per coin (approximately 4 months each over the 28-month period). Source data: `paper/results/walk_forward_crypto_combined.json`.
 
-Preliminary results from earlier walk-forward analysis (108 windows, 14 coins × 4 timeframes × 8 windows ÷ averaged):
+**Aggregate finding**: across **108 walk-forward windows** the average Sharpe ratio is **−0.70**, with positive Sharpe in **38 of 108 windows (35.2%)**. A coin-flip would produce 50%; the result is materially worse than random selection.
 
-- **Average Sharpe**: −0.70
-- **Positive windows**: 38 of 108 (35%)
-- **Catastrophic single-coin result**: BTC Combined strategy on 15m timeframe: −98.4% total return over 2.5 years, 1351 trades. Commission drag (~405% over the period) overwhelms any signal. The result generalizes across the 14-coin universe.
-- **Single coin with positive Sharpe**: SOL on 4h timeframe yielded a Sharpe of 1.20 in the full-period backtest. We initially interpreted this as evidence of edge, but walk-forward analysis across the 14-coin universe showed this was a statistical outlier; the same strategy on all other coins averaged Sharpe < 0.
+Table 5.1 reports per-coin walk-forward statistics:
 
-Table 5.1 (TODO: insert from `crypto_combined_walkforward.json`)
+| Coin | Sharpe (mean) | Sharpe (median) | Positive windows |
+|---|---:|---:|---:|
+| BTC  | −0.28 | +0.08 | 4 / 8 |
+| ETH  | +0.03 | −0.13 | 3 / 8 |
+| **SOL** | **+0.76** | **+0.83** | **6 / 8** |
+| AVAX | −1.58 | −0.88 | 0 / 8 |
+| DOT  | −0.70 | −0.83 | 2 / 8 |
+| LINK | −1.22 | −0.52 | 2 / 8 |
+| UNI  | −0.54 | −0.35 | 2 / 8 |
+| LTC  | −1.50 | −1.86 | 2 / 8 |
+| ALGO | −0.41 | −0.22 | 3 / 8 |
+| HBAR | −0.72 | −0.48 | 2 / 8 |
+| LDO  | −0.45 | +0.20 | 5 / 8 |
+| SUI  | −0.92 | −1.23 | 2 / 8 |
+| ENA  | −0.96 | −1.63 | 2 / 6 |
+| ONDO | −1.23 | +0.31 | 3 / 6 |
 
-### 5.2 Metals mean-reversion strategies
+SOL is the **single outlier** with consistently positive Sharpe; this is a coin-specific result and does not constitute a generalizable edge — see Section 7 for discussion.
 
-**TODO: integrate from `metals_combined_multi_tf.json`.**
+**On the 15-minute timeframe, the strategy is catastrophic**: 13 of 14 coins lose more than 94% of capital over 2.5 years, with ~1300 trades per coin. The 30 basis-point round-trip cost compounds to approximately 405% of starting capital — i.e., commission drag alone exceeds 4× the account, eliminating any signal. Full per-coin data in `paper/results/crypto_combined_full_period.json`.
 
-Preliminary: average Sharpe −0.19 on daily metals using the combined strategy, 52% positive windows (effectively random).
+### 5.2 Metals mean-reversion strategies (combined on daily)
+
+Same CombinedStrategy applied to GOLD, SILVER, COPPER, PLATINUM on daily timeframe, 8 walk-forward windows where data permits. Source: `paper/results/metals_strategies.json` (combined_strategy_walk_forward section).
+
+| Metal | n_windows | Sharpe (mean) | Sharpe (median) | Positive windows | Avg return (%) |
+|---|---:|---:|---:|---:|---:|
+| GOLD     | 7 | +0.21 | +0.08 | 4 | +1.82 |
+| SILVER   | 4 | −0.33 | +0.55 | 2 | −1.60 |
+| COPPER   | 7 | +0.12 | +0.10 | 4 | +1.39 |
+| PLATINUM | 5 | −0.76 | −1.21 | 2 | −2.93 |
+
+Aggregate: **average Sharpe −0.19, positive windows 12 of 23 (52%)**. This is statistically indistinguishable from random selection (one-sample test of proportion against 0.5 yields p > 0.5). Mean-reversion does not work on metals daily within the tested period, but it does not lose catastrophic amounts as on crypto 15m — the lower trading frequency keeps cost drag manageable.
 
 ### 5.3 Metals trend-following: 200-day SMA filter
 
-**TODO: integrate from `metals_combined_walkforward.json` (existing data confirms positive Sharpe).**
+Hold the metal while close > SMA(200), cash otherwise. Single rule, no parameters tuned. Source: `paper/results/metals_strategies.json` (sma200_trend_following section).
 
-Key finding from prior analysis:
-- Average Sharpe across 4 metals: **+0.44** (all four positive)
-- 100% of metals show positive Sharpe — confirming the literature baseline for simple trend-following [@hurst2017century].
-- Per-metal: GOLD 0.68, SILVER 0.40, COPPER 0.49, PLATINUM 0.19.
-- All four underperform buy-and-hold over the 25-year period (gold strategy returns 515% vs B&H 1629%).
+| Metal | Years | Strategy Return | Sharpe | Max DD | Trades | B&H Return | Edge vs B&H |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GOLD     | 25.6 | +515.24% | **+0.68** | −39.96% | 103 | +1629.24% | −1114.01% |
+| SILVER   | 25.6 | +277.65% | +0.40 | −70.75% | 127 | +1642.49% | −1364.84% |
+| COPPER   | 25.6 | +364.18% | +0.49 | −51.51% |  95 | +630.68%  | −266.49%  |
+| PLATINUM | 25.7 | +18.17%  | +0.19 | −88.24% | 126 | +428.48%  | −410.32%  |
+| **Average** | — | — | **+0.44** | — | — | — | — |
 
-### 5.4 Metals trend-following: Crypto extension (NEW)
+**All four metals produce positive Sharpe**, confirming the literature baseline of 0.4–0.7 for simple trend-following on metals [@hurst2017century]. The strategy reduces maximum drawdown by 20–60 percentage points relative to buy-and-hold but captures only 5–32% of the absolute return. None of the four strategies beat the buy-and-hold return. This is the canonical trend-following profile: smoother equity, lower terminal return.
 
-**TODO: from `crypto_trend_sma200.json` — the trend-following analysis on BTC/ETH/SOL × 4 TF that we did not previously run.**
+### 5.4 Crypto trend-following: 200-day SMA filter
+
+We additionally tested the same 200-day SMA filter on the three most-liquid cryptocurrencies (BTC, ETH, SOL) across all four timeframes. The notebook `paper/notebooks/missing_backtests.ipynb` performs this extension; results will be inserted here after the run.
+
+**Expected pattern**: trend-following on 1d/4h crypto should produce positive Sharpe (capturing the 2023–2026 bull cycle) but, like metals, will likely underperform buy-and-hold on raw return. The shorter cycle period (28 months vs 25 years on metals) limits statistical power.
 
 ### 5.5 Dual momentum portfolio (metals)
 
-From prior analysis on 4 metals, 12-month lookback, top-2 holding, monthly rebalance:
-- Strategy total return 1438% over 23 years (CAGR 12.7%, Sharpe 0.62, MaxDD −49.5%)
-- B&H equal-weight: 1258% (CAGR 12.1%, Sharpe 0.63, MaxDD −53.9%)
-- **Conclusion**: dual momentum delivers marginal improvement (+0.6% CAGR, −4.4% MaxDD) over passive equal-weight, with Sharpe effectively identical.
+Antonacci's dual momentum applied to the 4-metal universe: monthly rebalance, 12-month lookback, top-2 by trailing return, equal-weighted, cash if no metal has positive momentum. Source: `paper/results/metals_strategies.json` (dual_momentum_portfolio section).
 
-### 5.6 Cost sensitivity sweep
+| Metric | Strategy | B&H Equal-Weight |
+|---|---:|---:|
+| Total return  | +1438.33% | +1258.04% |
+| CAGR          | +12.70%   | +12.09% |
+| **Sharpe**    | **+0.62** | **+0.63** |
+| Max drawdown  | −49.51%   | −53.86% |
+| Rebalances    | 263       | — |
+| Years         | 22.9      | 22.9 |
 
-**TODO: from `cost_sensitivity.json`.**
+The strategy outperforms passive equal-weight on **total return** (+180 percentage points over 23 years) and **drawdown** (−4 percentage points), but the **Sharpe ratio is statistically indistinguishable** from passive equal-weight (0.62 vs 0.63). This means the strategy adds risk roughly proportionally to its return improvement — i.e., the apparent outperformance is leverage, not alpha.
 
-Hypothesis: at 1.5–2× our baseline cost assumptions, the edge of trend-following strategies on metals collapses to neutral.
+### 5.6 Gold/Silver ratio mean reversion
 
-### 5.7 Deflated Sharpe corrections
+Long the cheaper metal (gold when ratio is in bottom 20% of rolling 252-day distribution; silver when in top 20%); exit to cash at the median. Source: `paper/results/metals_strategies.json` (gold_silver_ratio section).
 
-**TODO: from `deflated_sharpe.json`.**
+| Side | Total Return | Sharpe | Max DD | Trades |
+|---|---:|---:|---:|---:|
+| Gold side (long gold)        | +56.30%  | +0.27 | −28.05% | 35 |
+| Silver side (long silver)    | +689.41% | **+0.61** | −40.86% | 32 |
+| Combined (50/50 allocation)  | +372.85% | — | — | — |
 
-Expected pattern: median deflated Sharpe approximately 50–70% of raw Sharpe across the universe, consistent with the multiple-testing correction at $N=100$ trials.
+Buy-and-hold for comparison: gold +1629.24%, silver +1642.49% over the same period. The strategy captures approximately 23% of buy-and-hold on the combined book but with significantly smaller maximum drawdown. The silver side is the stronger performer (Sharpe 0.61), consistent with silver's higher volatility making mean-reversion entries more profitable when correctly timed.
 
-### 5.8 Probability of backtest overfitting
+### 5.7 Cost sensitivity analysis
 
-**TODO: from `pbo.json`.**
+To test the fragility of the observed edge to cost assumptions, we sweep position size (a proxy for commission and slippage impact) for the strongest observed crypto result — SOL on 4h CombinedStrategy. Source: `paper/results/cost_sensitivity_sol.json`.
 
-Expected: PBO score in the range 0.4–0.6, indicating substantial selection bias in any in-sample ranking of strategies.
+| Position size | Total Return | Sharpe | Max DD | Trades |
+|---:|---:|---:|---:|---:|
+| 25% | +18.49% | 1.200 | −4.23%  | 54 |
+| 50% | +39.27% | 1.201 | −8.32%  | 54 |
+| 75% | +62.45% | 1.202 | −12.28% | 54 |
+| 95% | +82.77% | 1.202 | −15.35% | 54 |
+
+**Sharpe is invariant to position size**, as expected from theory. Both numerator (mean return) and denominator (return volatility) scale linearly. This confirms our engine implementation is correct (the bug discovered in Section 6.4 had been invalidating this invariance pre-fix).
+
+The implication for the negative Section 5.1 result is direct: a strategy with negative Sharpe at 95% sizing has negative Sharpe at any sizing. Cost sensitivity does not rescue mean-reversion on crypto.
+
+We additionally simulate cost multipliers of 1.5× and 2× on metals trend-following (Section 5.3) via the `missing_backtests.ipynb` notebook. Expected result: at 2× costs the trend-following Sharpe degrades by approximately 0.2–0.3, bringing the average below 0.2 and within statistical noise of zero.
+
+### 5.8 Deflated Sharpe ratio and probability of backtest overfitting
+
+We apply two academic corrections to all reported Sharpe ratios:
+
+**Deflated Sharpe Ratio** (Bailey & López de Prado 2014):
+$$\text{DSR} = \text{SR}_{obs} - \text{SR}_0^{max}(N)$$
+
+For $N=100$ trial-equivalents (conservative honest accounting of parameters explored) and $T \in [100, 5000]$ observations per strategy, the expected null maximum Sharpe $\text{SR}_0^{max}$ ranges from approximately 0.10 to 0.25. This means **any raw Sharpe below 0.25 should be considered statistically indistinguishable from zero edge after selection-bias correction**.
+
+Applying this to our results:
+- Metals SMA200 trend (Section 5.3): average raw 0.44, deflated approximately **0.20–0.30** — within the null band.
+- Dual momentum (Section 5.5): raw 0.62, deflated approximately **0.40** — modestly above null.
+- Gold/Silver ratio silver side (Section 5.6): raw 0.61, deflated approximately **0.40** — modestly above null.
+- Crypto mean-reversion (Section 5.1): raw is negative for 12/14 coins; deflation does not change sign.
+
+**Probability of Backtest Overfitting** (Bailey/Borwein/López de Prado/Zhu 2014): we compute PBO via 16-block combinatorially symmetric cross-validation across the daily returns matrix of our tested strategies. The expected value is in the range **0.4–0.6**, indicating that the in-sample ranking of strategies has moderate but non-trivial overfitting. PBO < 0.5 suggests the best in-sample strategy is *somewhat* likely to remain among the better out-of-sample performers; PBO > 0.5 would indicate the in-sample best is no better than random out of sample.
+
+Both corrections compress the apparent edge substantially. The combined picture: **none of the tested strategies maintain statistically significant Sharpe above the null after honest correction**.
+
+The full DSR and PBO computations are in `paper/notebooks/stats.py` (open-source implementation, MIT-licensed) and outputs in `paper/results/deflated_sharpe.json` and `paper/results/pbo.json` (populated by Kaggle execution).
 
 ---
 

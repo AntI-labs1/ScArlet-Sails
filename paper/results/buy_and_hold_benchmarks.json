@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "description": "Buy-and-hold benchmarks per asset, used as comparison baseline against all strategies.",
+    "crypto_period": "2023-01-01 to 2026-04-30",
+    "metals_period": "2000-08-30 to 2026-05-11 (full available history)"
+  },
+  "crypto": [
+    {"coin": "BTC",  "bh_return_pct":  362.13, "bh_max_dd_pct": -52.18, "bars": 116731, "start_price":  16520.69, "end_price":  76346.57},
+    {"coin": "ETH",  "bh_return_pct":   88.98, "bh_max_dd_pct": -65.79, "bars": 116731},
+    {"coin": "SOL",  "bh_return_pct":  735.08, "bh_max_dd_pct": -75.82, "bars": 116731},
+    {"coin": "AVAX", "bh_return_pct":  -16.38, "bh_max_dd_pct": -88.06, "bars": 116731},
+    {"coin": "DOT",  "bh_return_pct":  -72.01, "bh_max_dd_pct": -90.34, "bars": 116731},
+    {"coin": "LINK", "bh_return_pct":   64.00, "bh_max_dd_pct": -75.95, "bars": 116731},
+    {"coin": "UNI",  "bh_return_pct":  -38.28, "bh_max_dd_pct": -84.72, "bars": 116731},
+    {"coin": "LTC",  "bh_return_pct":  -20.94, "bh_max_dd_pct": -67.58, "bars": 116731},
+    {"coin": "ALGO", "bh_return_pct":  -35.70, "bh_max_dd_pct": -86.61, "bars": 116731},
+    {"coin": "HBAR", "bh_return_pct":  139.97, "bh_max_dd_pct": -81.42, "bars": 116731},
+    {"coin": "LDO",  "bh_return_pct":  -61.84, "bh_max_dd_pct": -93.20, "bars": 116731},
+    {"coin": "SUI",  "bh_return_pct":  -33.71, "bh_max_dd_pct": -84.62, "bars": 104976},
+    {"coin": "ENA",  "bh_return_pct":  -81.19, "bh_max_dd_pct": -94.94, "bars":  72832},
+    {"coin": "ONDO", "bh_return_pct":  -70.56, "bh_max_dd_pct": -81.87, "bars":  36904}
+  ],
+  "metals": [
+    {"asset": "GOLD",     "bh_return_pct": 1629.24, "bars": 6447, "start_price":  273.90, "end_price": 4685.20, "start_date": "2000-08-30", "end_date": "2026-05-11"},
+    {"asset": "SILVER",   "bh_return_pct": 1642.49, "bars": 6449, "start_price":    4.93, "end_price":   81.88, "start_date": "2000-08-30", "end_date": "2026-05-11"},
+    {"asset": "COPPER",   "bh_return_pct":  630.68, "bars": 6452, "start_price":    0.88, "end_price":    6.41, "start_date": "2000-08-30", "end_date": "2026-05-11"},
+    {"asset": "PLATINUM", "bh_return_pct":  428.48, "bars": 6475, "start_price":  402.70, "end_price": 2076.50, "start_date": "1997-10-29", "end_date": "2026-05-11"}
+  ],
+  "summary": {
+    "crypto_2023_2026": {
+      "winners": ["BTC (+362%)", "SOL (+735%)", "ETH (+89%)", "HBAR (+140%)", "LINK (+64%)"],
+      "losers":  ["AVAX", "DOT", "UNI", "LTC", "ALGO", "LDO", "SUI", "ENA", "ONDO"],
+      "structural_finding": "9/14 alt-coins net negative even on buy-and-hold during the largest crypto bull cycle in history. Selecting the wrong alt = capital destruction regardless of strategy."
+    },
+    "metals_2000_2026": {
+      "all_positive": true,
+      "range_pct": [428, 1642],
+      "compound_25y_factor": "5.3× to 17.4×",
+      "structural_finding": "Sustained 25-year bull market in metals via inflation, monetary expansion, and geopolitical premium. Any trend-following strategy benefits passively."
+    }
+  }
+}

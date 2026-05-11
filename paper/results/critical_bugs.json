@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "description": "Documented infrastructure bugs discovered during 2026-05 audit. Each silently inflated in-sample backtest results.",
+    "audit_date": "2026-05-11",
+    "auditor": "Claude Opus 4.7 + first author"
+  },
+  "bugs": [
+    {
+      "id": "B1",
+      "name": "Look-ahead bias in feature scaler",
+      "file": "core/feature_engine_v2.py",
+      "function": "_normalize_features",
+      "description": "StandardScaler.fit_transform() called on first invocation regardless of whether data was training or inference. Caller passing combined train+test dataframe silently fitted scaler on future data.",
+      "severity": "critical",
+      "detection_method": "Multi-market walk-forward showed systematic OOS Sharpe drop vs IS",
+      "fix": "Added explicit fit_scaler: bool parameter; raises RuntimeError if normalize=True without loaded scaler"
+    },
+    {
+      "id": "B2",
+      "name": "Hardcoded current_drawdown=0.0 disables killswitch",
+      "file": "scripts/run_council.py",
+      "line": 523,
+      "description": "Position sizer received current_drawdown=0.0 hardcoded with `# TODO` comment. Risk killswitch logic never triggered regardless of actual portfolio performance.",
+      "severity": "critical",
+      "detection_method": "Code grep for TODO/FIXME during audit",
+      "fix": "Added DecisionLogger.get_current_drawdown() that walks closed-trade log, compounds realized P&L, returns peak-to-trough drawdown"
+    },
+    {
+      "id": "B3",
+      "name": "Inverted dispersion-to-position-size formula in tests",
+      "file": "tests/test_rolling_dispersion.py + tests/test_dispersion_inverted.py",
+      "description": "Source code in core/rolling_dispersion.py was CORRECT (agreement → high multiplier). Tests asserted opposite. Earlier audit had been about to invert SOURCE to match wrong tests.",
+      "severity": "high",
+      "detection_method": "Read source docstring vs tests during this revision",
+      "fix": "Corrected tests to match documented and correct source behavior"
+    },
+    {
+      "id": "B4",
+      "name": "Three inconsistent Sharpe annualization factors",
+      "files_affected": [
+        "backtesting/honest_backtest_v2.py — sqrt(252 * 96)",
+        "analysis/walk_forward_validation.py — sqrt(252 * 24 * 4)",
+        "orchestrator.py — sqrt(252 * 24)"
+      ],
+      "description": "Three different annualization factors in use simultaneously. First two arithmetically identical (24192) but inconsistent in meaning. Third different value. None correct for 24/7 crypto.",
+      "severity": "high",
+      "detection_method": "Grep audit `sqrt(252` across project",
+      "fix": "Single canonical bars_per_year(timeframe, asset_class) in core/metrics_calculator.py; vectorbt freq parameter unified"
+    },
+    {
+      "id": "B5",
+      "name": "Data file naming mismatch BTC_USDT vs BTCUSDT",
+      "files_affected": [
+        "core/data_loader.py — expected BTC_USDT_15m.parquet",
+        "data/raw/*.dvc — tracked BTCUSDT_15m.parquet"
+      ],
+      "description": "Loader expected canonical naming with underscore between asset and quote. DVC tracked Binance-native naming without underscore. 5 test cases silently failing with FileNotFoundError for months.",
+      "severity": "medium",
+      "detection_method": "Audit of test_data_loader.py failures",
+      "fix": "Loader now accepts both naming conventions"
+    }
+  ],
+  "net_effect": {
+    "claimed_before_audit": {
+      "sharpe": 2.91,
+      "calmar": 8.98,
+      "max_dd_pct": -15.4,
+      "win_rate_pct": 65.7,
+      "source": "README.md Phase 2 walk-forward validation claim"
+    },
+    "realistic_after_audit": {
+      "sharpe_per_strategy": [0.4, 0.6],
+      "max_dd_pct": [-30, -50],
+      "win_rate_pct": [35, 55],
+      "source": "Multi-market walk-forward in this paper"
+    },
+    "discrepancy_factor": "~6x for Sharpe",
+    "conclusion": "Original README numbers were artifacts of bugs above, not real edge."
+  }
+}
