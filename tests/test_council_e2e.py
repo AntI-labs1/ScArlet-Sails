@@ -201,7 +201,7 @@ class TestSystemHealth:
         from strategies.xgboost_ml_v3 import XGBoostMLStrategyV3
         from council.quant_aggregator import QuantAggregator
         from council.contracts import QuantSignals, AgentOpinion, ActionType
-        from council.rag_agent import RAGAgent
+        from rag.rag_agent import RAGAgent
         from core.rolling_dispersion import RollingDispersionCalculator
         from core.sanitize_features import sanitize_for_model
         from rag.hybrid_retriever import HybridRetriever

@@ -24,8 +24,8 @@ DATA_DIR = PROJECT_ROOT / "data" / "raw"
 _FIXTURE_COINS = ("BTC", "ETH", "SOL", "ALGO", "AVAX")
 _FIXTURE_TIMEFRAMES = ("15m", "1h")
 
-# pd.date_range frequency strings keyed by timeframe.
-_FREQ_MAP = {"15m": "15min", "1h": "1H", "4h": "4H", "1d": "1D"}
+# pd.date_range frequency strings keyed by timeframe (pandas 2.2+ aliases).
+_FREQ_MAP = {"15m": "15min", "1h": "1h", "4h": "4h", "1d": "1D"}
 
 
 def _synthetic_ohlcv(n_bars: int, freq: str, seed: int) -> pd.DataFrame:

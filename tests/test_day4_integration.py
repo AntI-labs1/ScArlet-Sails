@@ -76,7 +76,7 @@ class TestRAGIntegration:
     
     def test_rag_agent_imports(self):
         """RAG agent can be imported."""
-        from council.rag_agent import RAGAgent
+        from rag.rag_agent import RAGAgent
         assert RAGAgent is not None
     
     def test_hybrid_retriever_works(self):

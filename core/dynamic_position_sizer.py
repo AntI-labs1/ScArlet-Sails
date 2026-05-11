@@ -71,8 +71,8 @@ class DynamicPositionSizer:
                 self.config = yaml.safe_load(f)
             self.max_position = self.config['trading']['risk_management']['max_position']
         else:
-            logger.warning('Using HARDCODED risk limits!')
-            self.max_position = 0.95
+            # Honor the constructor parameter; config_path is the override path.
+            self.max_position = max_position
 
         self.base_position = base_position
         self.conviction_weight = conviction_weight
