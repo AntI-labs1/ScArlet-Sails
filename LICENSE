@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 ScArlet-Sails authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+DISCLAIMER ON FINANCIAL CONTENT
+
+This repository contains research code, backtest results, and analysis
+related to algorithmic trading. None of the content constitutes financial,
+investment, tax, or legal advice. All numerical results are historical
+backtests and do not predict future performance. Past performance is not
+indicative of future results.
+
+The authors specifically document (see POST_MORTEM.md and paper/drafts/main.md)
+that none of the strategies tested in this repository demonstrated a
+generalizable trading edge in out-of-sample testing. Any reader using this
+code or its findings to make actual trading or investment decisions does so
+entirely at their own risk.
+
+Paper drafts in paper/drafts/ are released under CC-BY 4.0 upon arXiv
+publication.

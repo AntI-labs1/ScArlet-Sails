@@ -1,0 +1,55 @@
+cff-version: 1.2.0
+title: >-
+  ScArlet-Sails: A Multi-Market Walk-Forward Audit of Retail
+  Technical Trading Strategies (Crypto 2023–2026 and Metals 2000–2026)
+message: >-
+  If you use this software or its findings in your research,
+  please cite it using the metadata below.
+type: software
+authors:
+  - given-names: "Bubble3"
+    family-names: "[author surname]"
+    affiliation: Independent
+identifiers:
+  - type: url
+    value: 'https://github.com/StarDust1508/ScArlet-Sails'
+    description: Source code repository
+repository-code: 'https://github.com/StarDust1508/ScArlet-Sails'
+url: 'https://github.com/StarDust1508/ScArlet-Sails'
+abstract: >-
+  An 8-month retail algorithmic trading research project that
+  conducted an honest multi-market walk-forward audit of rule-based
+  technical strategies. 131 walk-forward windows across 14
+  cryptocurrencies and 4 precious metals, 5 strategy classes,
+  rigorous Deflated Sharpe Ratio and Probability of Backtest
+  Overfitting corrections. Negative central finding: no
+  generalizable out-of-sample edge from simple technical
+  strategies in the tested universe. Repository includes a
+  reproducible toolkit (vectorbt-based backtest engine, free-data
+  fetchers, statistical correction implementations) and serves as
+  a research baseline and educational artifact rather than a
+  production trading system.
+keywords:
+  - algorithmic-trading
+  - backtesting
+  - walk-forward
+  - deflated-sharpe-ratio
+  - probability-of-backtest-overfitting
+  - cryptocurrency
+  - precious-metals
+  - retail-trading
+  - negative-results
+  - reproducibility
+license: MIT
+version: '1.0-research-baseline'
+date-released: '2026-05-11'
+preferred-citation:
+  type: misc
+  title: >-
+    Rule-Based Technical Trading Strategies Fail to Generalize:
+    A Multi-Market Walk-Forward Audit (Crypto 2023–2026 and Metals 2000–2026)
+  authors:
+    - given-names: "Bubble3"
+      family-names: "[author surname]"
+  year: 2026
+  url: 'https://github.com/StarDust1508/ScArlet-Sails'
