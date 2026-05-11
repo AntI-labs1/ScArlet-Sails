@@ -1,0 +1,92 @@
+# Passive portfolio definitions for ScArlet-Sails Track D
+# Used by passive/rebalance.py
+#
+# Naming: {portfolio_id: {assets: {ticker: target_weight}}}
+# Weights must sum to 1.0 per portfolio.
+
+portfolios:
+
+  # ============================================================
+  # Option 1: 60/40 Classic (US tickers)
+  # ============================================================
+  "60_40_us":
+    name: "60/40 Classic (US)"
+    description: "60% stocks, 40% long-term bonds. Simplest passive."
+    rebalance_freq: "quarterly"
+    drift_threshold_pct: 5.0
+    assets:
+      SPY: 0.60   # S&P 500
+      TLT: 0.40   # 20+ year US Treasury
+
+  "60_40_us_total":
+    name: "60/40 Total Market (US)"
+    description: "60% total US market, 40% aggregate bonds. Slightly more diversified."
+    rebalance_freq: "quarterly"
+    drift_threshold_pct: 5.0
+    assets:
+      VTI: 0.60   # Total US stock market
+      AGG: 0.40   # Aggregate US bonds
+
+  # ============================================================
+  # Option 2: All Weather (Dalio)
+  # ============================================================
+  "all_weather":
+    name: "All Weather (Dalio)"
+    description: "Balanced across regimes — stocks, bonds, commodities, gold."
+    rebalance_freq: "annual"
+    drift_threshold_pct: 5.0
+    assets:
+      SPY: 0.30   # US stocks
+      TLT: 0.40   # LT bonds
+      IEF: 0.15   # IT bonds
+      DBC: 0.075  # Commodities
+      IAU: 0.075  # Gold
+
+  # ============================================================
+  # Option 3: Permanent Portfolio (Browne)
+  # ============================================================
+  "permanent":
+    name: "Permanent Portfolio (Browne)"
+    description: "Most conservative: 25% each in stocks, bonds, cash, gold."
+    rebalance_freq: "annual"
+    drift_threshold_pct: 5.0
+    assets:
+      SPY: 0.25
+      TLT: 0.25
+      SHV: 0.25   # Short T-bills (cash proxy)
+      IAU: 0.25   # Gold
+
+  # ============================================================
+  # Russian-context alternatives (post-2022 sanctions)
+  # ============================================================
+  "60_40_ru":
+    name: "60/40 (Russian-listed БПИФ)"
+    description: "Pseudo-60/40 using Russian-listed ETFs."
+    rebalance_freq: "quarterly"
+    drift_threshold_pct: 5.0
+    assets:
+      TMOS: 0.60   # MOEX index (T-Bank)
+      TBND: 0.40   # RU bonds
+
+  "permanent_ru":
+    name: "Permanent (Russian-listed)"
+    description: "25% × 4 across Russian asset classes."
+    rebalance_freq: "annual"
+    drift_threshold_pct: 5.0
+    assets:
+      TMOS: 0.25   # Stocks
+      TBND: 0.25   # Bonds
+      SBGB: 0.25   # State bonds (cash-like)
+      TGLD: 0.25   # Gold
+
+  # ============================================================
+  # EU / UCITS context
+  # ============================================================
+  "60_40_eu":
+    name: "60/40 (UCITS)"
+    description: "World stocks + global bonds via UCITS ETFs."
+    rebalance_freq: "quarterly"
+    drift_threshold_pct: 5.0
+    assets:
+      VWCE: 0.60   # FTSE All-World UCITS
+      AGGH: 0.40   # Aggregate Bond UCITS (EUR hedged)
