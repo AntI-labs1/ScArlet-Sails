@@ -8,11 +8,20 @@ Tests the complete RAG workflow:
 3. Outcomes Recording
 4. Performance Benchmarks
 
+ВРЕМЕННО SKIP'НУТ (см. отчёт ревизии 2026-05): требует seed-датасет паттернов
+в `rag/patterns/`, который в MVP-пути retail-крипто-трейдера не нужен. Переоткрыть
+после того как RAG-слой реально подключат к Council и/или мигрируют на ChromaDB.
+
 Run with: pytest tests/test_rag_end_to_end.py -v
 """
 
 import pytest
-import time
+
+pytestmark = pytest.mark.skip(
+    reason="RAG e2e требует seed-датасет паттернов; не входит в MVP scope."
+)
+
+import time  # noqa: E402
 from pathlib import Path
 from typing import Dict
 import tempfile

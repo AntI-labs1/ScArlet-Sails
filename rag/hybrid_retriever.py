@@ -25,7 +25,10 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 from .llm_protocols import (
     BaseLLMProvider,
@@ -172,7 +175,7 @@ class HybridRetriever:
             try:
                 with open(self.outcomes_file, 'r') as f:
                     return json.load(f)
-            except:
+            except (OSError, json.JSONDecodeError):
                 pass
         return {}
     
@@ -503,7 +506,7 @@ class HybridRetriever:
         if self.vector_store is not None:
             try:
                 stats['vector_store'] = self.vector_store.get_stats()
-            except:
-                pass
-        
+            except Exception as e:  # noqa: BLE001 — stats are best-effort
+                logger.warning(f"vector_store.get_stats failed: {e}")
+
         return stats

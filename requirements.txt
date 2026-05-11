@@ -1,74 +1,76 @@
-﻿# SCARLET SAILS - Requirements
-# Python 3.8+
+# ScArlet-Sails — Requirements
+# Python >=3.10 (см. pyproject.toml)
 
+# ========================================
 # Core Data Science
-numpy>=1.23.0
-pandas>=1.5.0
-scipy>=1.10.0
+# ========================================
+numpy>=1.26.0
+pandas>=2.1.0
+scipy>=1.11.0
 
+# ========================================
 # Machine Learning
-scikit-learn>=1.2.0
-xgboost>=1.7.0
-imbalanced-learn>=0.10.0
-gym>=0.26.0
+# ========================================
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+imbalanced-learn>=0.11.0
 
-# Deep Learning (PyTorch)
-torch>=2.0.0
-torchvision>=0.15.0
+# ========================================
+# Deep Learning (PyTorch) — для RL компонентов
+# ========================================
+torch>=2.1.0
 
+# ========================================
+# Backtesting & Trading Metrics
+# ========================================
+# vectorbt — единый бэктест-движок, заменяет 7 ручных циклов
+vectorbt>=0.26.0
+# quantstats — отчёты по equity (Sharpe/Calmar/MDD/...)
+quantstats>=0.0.62
+
+# ========================================
 # Visualization
-matplotlib>=3.6.0
-seaborn>=0.12.0
-plotly>=5.14.0
+# ========================================
+matplotlib>=3.7.0
+seaborn>=0.13.0
+plotly>=5.18.0
 
-# Data Download
-ccxt>=4.0.0
-requests>=2.28.0
-
-# Progress Bars
-tqdm>=4.65.0
-
-# YAML Configuration
-PyYAML>=6.0
-
-# Logging
-python-json-logger>=2.0.0
-
+# ========================================
 # Statistics
+# ========================================
 statsmodels>=0.14.0
 
-# File I/O
+# ========================================
+# File I/O & Config
+# ========================================
+pyarrow>=14.0.0
 openpyxl>=3.1.0
-pyarrow>=11.0.0
+PyYAML>=6.0
+python-json-logger>=2.0.0
+
+# ========================================
+# Progress / CLI
+# ========================================
+tqdm>=4.66.0
+requests>=2.31.0
 
 # ========================================
 # RAG (Retrieval-Augmented Generation)
 # ========================================
-# Semantic embeddings for pattern matching
-sentence-transformers>=2.2.2
-
-# Vector database (FAISS for CPU)
+sentence-transformers>=2.5.0
 faiss-cpu>=1.7.4
-
-# Optional: LLM integration (Ollama, local models)
-langchain-community>=0.0.20
-langchain-core>=0.1.0
-
-# Optional: LangGraph for multi-agent orchestration
-# langgraph>=0.0.30  # Uncomment if using Council orchestration
 
 # ========================================
 # Development Tools
 # ========================================
-# Jupyter
 jupyter>=1.0.0
-ipython>=8.10.0
+ipython>=8.18.0
 
-# Testing (updated)
-pytest>=7.2.0
-pytest-cov>=4.0.0
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
 
 # Code Quality
-black>=23.1.0
-flake8>=6.0.0
-mypy>=1.0.0
+black>=24.1.0
+flake8>=7.0.0
+mypy>=1.8.0

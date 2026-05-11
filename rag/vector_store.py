@@ -449,7 +449,7 @@ class PatternVectorStore:
             try:
                 with open(meta['file'], 'r', encoding='utf-8') as f:
                     pattern = json.load(f)
-            except:
+            except (OSError, json.JSONDecodeError, KeyError):
                 continue
             
             results.append({

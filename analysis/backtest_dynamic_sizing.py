@@ -1,3 +1,4 @@
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py (см. backtesting/MIGRATION_NOTES.md).
 """
 Day 6: Backtest comparison - Static vs Dynamic Position Sizing.
 """

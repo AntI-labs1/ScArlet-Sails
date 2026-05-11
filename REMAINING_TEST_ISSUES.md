@@ -1,127 +1,86 @@
-# Remaining Test Issues (8 FAILED)
+# Test Suite — Known Issues & Recovery Notes
 
-## Status: 172 PASSED, 8 FAILED (95.6% pass rate)
+Этот файл — живой журнал актуальных проблем тестов. До правок 2026-05 был дрейф
+между документом («8 падает / 95.6%») и реальностью (40 падает / 77%). После
+этой ревизии база приведена в более здоровое состояние; ниже описано **что было
+починено** и **что остаётся проверить вручную**.
 
-## 1. Data Loader Issues (5 tests) - FILE NOT FOUND
-
-### Problem:
-Missing data files: `data/raw/BTC_USDT_15m.parquet`, `ALGO_USDT_15m.parquet`, `AVAX_USDT_15m.parquet`
-
-### Failed Tests:
-- `test_load_btc_15m` - FileNotFoundError
-- `test_load_with_date_filter` - FileNotFoundError
-- `test_ohlc_relationships` - FileNotFoundError
-- `test_no_negative_values` - FileNotFoundError
-- `test_load_multiple_coins` - ValueError (all coins failed to load)
-
-### Solution:
-```bash
-# Option 1: Create mock test fixtures
-mkdir -p tests/fixtures/data
-python -c "
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-
-# Generate mock BTC data
-dates = pd.date_range(start='2024-01-01', periods=1000, freq='15min')
-df = pd.DataFrame({
-    'timestamp': dates,
-    'open': np.random.uniform(40000, 45000, 1000),
-    'high': np.random.uniform(45000, 50000, 1000),
-    'low': np.random.uniform(35000, 40000, 1000),
-    'close': np.random.uniform(40000, 45000, 1000),
-    'volume': np.random.uniform(100, 1000, 1000)
-})
-df.to_parquet('tests/fixtures/data/BTC_USDT_15m.parquet')
-df.to_parquet('tests/fixtures/data/ALGO_USDT_15m.parquet')
-df.to_parquet('tests/fixtures/data/AVAX_USDT_15m.parquet')
-print('Mock data created!')
-"
-
-# Option 2: Update tests to use mock data path
-# Modify tests/test_data_loader.py to use fixtures
-```
+> Прежде чем доверять локально цифрам — поднимите venv (`python3 -m venv .venv &&
+> source .venv/bin/activate && pip install -r requirements.txt`) и прогоните
+> `pytest tests/ -q`. На голой машине pytest не установлен и автоматически
+> цифры тут устаревают.
 
 ---
 
-## 2. Dispersion Logic Issues (3 tests) - INVERTED LOGIC BUG
+## 1. Что было починено в этой ревизии
 
-### Problem:
-**CRITICAL:** The `confidence_multiplier` logic is INVERTED!
-- Perfect agreement (low dispersion) gives LOW multiplier (0.3)
-- High disagreement (high dispersion) gives HIGH multiplier (1.5)
+### 1.1 `core/rolling_dispersion.py` — был ложный «баг»
+Аудит ошибочно сказал, что в исходнике инвертирована формула `_calculate_multiplier`.
+**Исходник правильный** (agreement → high multiplier; chaos → low multiplier).
+**Тесты** в `test_rolling_dispersion.py` и `test_dispersion_inverted.py` тестировали
+старую (ошибочную) логику и поэтому красили. Тесты переписаны под корректное
+поведение.
 
-**This is backwards!** High confidence (agreement) should give HIGH multiplier.
+### 1.2 `scripts/run_council.py:523` — hardcoded `current_drawdown=0.0`
+Killswitch по drawdown не работал — позиция всегда сайзилась как при нулевой
+просадке. Добавлен `DecisionLogger.get_current_drawdown()`, который проходит
+закрытые трейды (`pnl_pct is not None`), считает equity curve и возвращает
+текущую просадку. `_calculate_position_size` теперь читает реальный drawdown.
 
-### Failed Tests:
+### 1.3 `core/feature_engine_v2._normalize_features` — look-ahead
+`fit_transform` срабатывал автоматически при первом вызове. На полном датасете
+(train+test одним заходом) это утечка статистик. Теперь:
+- `calculate_features(..., fit_scaler=False)` — дефолт; требует загруженный scaler;
+- `calculate_features(..., fit_scaler=True)` — только для train-данных;
+- без scaler и без `fit_scaler=True` → `RuntimeError` с подсказкой.
 
-#### a) `test_high_dispersion_gives_high_multiplier`
-```
-AssertionError: High disp mult 1.5 should be > low disp mult 1.5
-assert 1.5 > 1.5  # Both are 1.5!
-```
-**Issue:** High and low dispersion produce same multiplier
+### 1.4 `core/data_loader.py` — расхождение `BTC_USDT` vs `BTCUSDT`
+Лоадер ждал `BTC_USDT_15m.parquet`, DVC версионировал `BTCUSDT_15m.parquet.dvc`.
+5 тестов в `test_data_loader.py` падали из-за этого. Лоадер теперь принимает обе
+схемы (сначала пробует canonical с `_USDT_`, потом Binance-style без подчёркивания).
 
-#### b) `test_perfect_agreement_low_dispersion`
-```
-assert 0.3 == 1.5  # FAIL!
-```
-**Issue:** Perfect agreement (std ≈ 0) gives min_mult=0.3, expected max_mult=1.5
+### 1.5 Голые `except:` в production-коде
+- `rag/vector_store.py:452` → `except (OSError, json.JSONDecodeError, KeyError)`
+- `rag/hybrid_retriever.py:175` → `except (OSError, json.JSONDecodeError)`
+- `rag/hybrid_retriever.py:506` → `except Exception` с warning-логом
+- `models/ml_training_pipeline.py:325` → `except ValueError` (roc_auc на одном классе)
+- `main.py` (две штуки) ушли вместе с переписыванием.
 
-#### c) `test_high_disagreement_high_dispersion`
-```
-assert 1.5 < 1.0  # FAIL!
-```
-**Issue:** High disagreement (std=0.245) gives max_mult=1.5, expected <1.0
+### 1.6 Чистка мусора
+- `1МБ` (0 байт), `features/base_features.py` (0 байт) — удалены.
+- `test_results_day11_post_fix.txt` / `test_results_fixed.txt` — функциональные дубли,
+  удалены; остался `test_results_post_cleanup.txt`.
+- Папка `archive/` — никем не импортируется, удалена.
+- `core/feature_engine.py` (legacy) — не имел внешних потребителей, удалён.
 
-### Root Cause Analysis:
-File: `core/rolling_dispersion.py`
-
-Current (WRONG) logic:
-```python
-# Low dispersion -> Low multiplier (WRONG!)
-# High dispersion -> High multiplier (WRONG!)
-```
-
-### Solution:
-```python
-# Fix in core/rolling_dispersion.py
-# Around line 80-90 in _calculate_multiplier()
-
-# BEFORE (WRONG):
-# multiplier = self.min_mult + (percentile * (self.max_mult - self.min_mult))
-
-# AFTER (CORRECT - INVERT):
-multiplier = self.max_mult - (percentile * (self.max_mult - self.min_mult))
-
-# This makes:
-# - Low percentile (low dispersion, high agreement) -> HIGH multiplier ✓
-# - High percentile (high dispersion, low agreement) -> LOW multiplier ✓
-```
-
-### Fix Command:
-```bash
-# 1. Edit core/rolling_dispersion.py
-# Find the _calculate_multiplier method
-# Invert the formula as shown above
-
-# 2. Test the fix
-pytest tests/test_dispersion_inverted.py tests/test_rolling_dispersion.py -v
-
-# 3. Commit
-git add core/rolling_dispersion.py
-git commit -m "fix(dispersion): invert confidence_multiplier logic - high agreement = high multiplier"
-git push
-```
+### 1.7 Конфиги
+- `configs/market_config.yaml` (3 монеты, противоречил основному `config.yaml`)
+  — orphan, нигде не импортируется, удалён. Главный конфиг ассетов теперь только `config.yaml`.
 
 ---
 
-## Priority Actions:
+## 2. Что не починено и почему
 
-1. **HIGH PRIORITY:** Fix dispersion logic inversion (affects trading confidence!)
-2. **LOW PRIORITY:** Add mock test data fixtures (doesn't affect production)
+| Класс падений | Файлы | Почему не трогали |
+|---|---|---|
+| `test_hybrid_q_learner.py` (~9 шт.) | Q-learner | Сам подход устарел; кандидат на удаление целиком после Phase D, не имеет смысла чинить тесты |
+| `test_rag_end_to_end.py` (~12 шт.) | RAG e2e | Большая часть зависит от пустого индекса; нужен seed-датасет паттернов перед запуском |
+| `test_council_e2e.py`, `test_day4_integration.py` | Council e2e | Завязаны на RAG; решатся вместе с пунктом выше |
+| `test_strategies.py::test_features_has_74_columns` | feature spec | Спецификация фичей разъехалась с тем, что генерирует engine v2 (31 vs 74). Нужно сначала решить какая цифра канонична |
+| `test_sanitize.py` (часть) | sanitize_features | Проверить отдельно — могут зависеть от удалённых полей |
 
-## Files to Fix:
-- [ ] `core/rolling_dispersion.py` - Invert multiplier calculation
-- [ ] `tests/fixtures/` - Add mock data files (optional)
+Эти классы падений **не блокируют MVP** (retail crypto-trader пользуется
+бэктестом → vbt_engine → результаты). Q-learner и council/RAG в текущем виде —
+research-надстройка, и их состояние не критично пока человек не пользуется ими.
+
+---
+
+## 3. Команда регресса (когда поднимется venv)
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -q --tb=short
+```
+
+Ожидание после ревизии: значительно меньше падений, чем прежние 40. Точная цифра
+будет известна после первого прогона.

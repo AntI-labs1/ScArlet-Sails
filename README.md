@@ -31,7 +31,7 @@ The system is built around **Council of Agents** architecture, where:
 │  ├─ Opportunity Scorer: trend, momentum, volume                  │
 │  └─ Risk Penalty: GARCH, CVaR, drawdown                          │
 │                                                                  │
-│  P_ml (XGBoost, threshold 0.70)                                  │
+│  P_ml (XGBoost, threshold from config.yaml: models.xgboost.threshold) │
 │  ├─ Multi-TF features: 4 timeframes × 31 indicators             │
 │  └─ Binary classifier: Long/Neutral                             │
 │                                                                  │
@@ -180,26 +180,36 @@ The system uses pre-computed features stored in parquet format:
 ```bash
 git clone https://github.com/AntI-labs1/ScArlet-Sails.git
 cd ScArlet-Sails
-pip install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt   # подтянет vectorbt, quantstats и пр.
 ```
+Python требуется **>=3.10** (см. `pyproject.toml`).
 
 ## Usage
+
+Канонический бэктест — через единый vectorbt-движок:
 ```bash
-# Run all tests
-python -m pytest tests/ -v
+# Health check (config, models, data layout)
+python main.py
 
-# Backtest rule-based strategy
-python scripts/run_backtest.py --strategy rule_based --coin BTC --tf 4h
+# Single-asset backtest (рекомендуемый путь)
+python run_backtest.py --strategy rsi --coin BTC --timeframe 15m
 
-# Train XGBoost model
+# Multi-asset comparison
+python run_backtest.py --strategy combined --coins BTC ETH SOL --timeframe 15m
+
+# Training pipeline (XGBoost v3)
 python scripts/train_xgboost_v3.py --coin BTC --tf 4h
 
-# Walk-forward validation
+# Walk-forward validation (legacy; будет смигрирована на vbt)
 python analysis/walk_forward_validation.py
 
-# Dynamic position sizing backtest
-python analysis/backtest_dynamic_sizing.py
+# Tests
+pytest tests/ -q
 ```
+
+**Старые скрипты `backtesting/honest_backtest*.py`, `analysis/backtest_*.py`,
+`core/backtest_engine.py` помечены DEPRECATED** — см. `backtesting/MIGRATION_NOTES.md`.
 
 ## Research
 

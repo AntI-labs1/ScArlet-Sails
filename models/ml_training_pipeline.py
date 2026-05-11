@@ -322,7 +322,8 @@ class MLTrainingPipeline:
                 multi_class='ovr',
                 average='macro'
             )
-        except:
+        except ValueError:
+            # roc_auc_score raises ValueError when only one class is present
             metrics['roc_auc_ovr'] = None
 
         # Confusion matrix

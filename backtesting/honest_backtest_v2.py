@@ -1,3 +1,4 @@
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py (см. backtesting/MIGRATION_NOTES.md).
 """
 Honest Backtest V2 - Fixed Horizon + Triple Barrier + Hysteresis
 ================================================================================

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py (см. backtesting/MIGRATION_NOTES.md).
 """
 P_j(S) Framework - Backtest Engine
 ==================================

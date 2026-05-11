@@ -515,12 +515,19 @@ class CouncilSession:
                 if self._dispersion_calc:
                     disp_state = self._dispersion_calc.get_state()
                 
+                current_dd = 0.0
+                if self._decision_logger is not None:
+                    try:
+                        current_dd = self._decision_logger.get_current_drawdown()
+                    except Exception as e:
+                        logger.warning(f"Drawdown read failed: {e}")
+
                 inputs = PositionSizingInput(
                     p_hyb=context.quant_signals.p_hyb or 0.5,
                     agreement=context.quant_signals.agreement or 0.5,
                     regime_state=regime_state,
                     dispersion_state=disp_state,
-                    current_drawdown=0.0,  # TODO: track actual drawdown
+                    current_drawdown=current_dd,
                 )
                 
                 output = self._position_sizer.calculate(inputs)

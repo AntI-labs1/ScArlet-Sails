@@ -204,16 +204,44 @@ Max Consecutive Losses: {self.max_consecutive_losses}
 """)
 
 
+# Canonical bars-per-year for 24/7 crypto markets.
+# Use these for any new metric calculation. Old scripts using 252-based factors
+# are kept for backwards compat but should be migrated.
+CRYPTO_BARS_PER_YEAR: Dict[str, int] = {
+    "1m": 365 * 24 * 60,
+    "5m": 365 * 24 * 12,
+    "15m": 365 * 24 * 4,
+    "1h": 365 * 24,
+    "4h": 365 * 6,
+    "1d": 365,
+}
+
+
+def bars_per_year(timeframe: str) -> int:
+    """Return canonical bars-per-year for a 24/7 crypto timeframe.
+
+    Raises:
+        KeyError: unknown timeframe.
+    """
+    try:
+        return CRYPTO_BARS_PER_YEAR[timeframe]
+    except KeyError as e:
+        raise KeyError(
+            f"Unknown timeframe {timeframe!r}; expected one of "
+            f"{list(CRYPTO_BARS_PER_YEAR)}"
+        ) from e
+
+
 class MetricsCalculator:
     """
     Calculate comprehensive backtest metrics.
-    
+
     Target metrics:
     - Sharpe Ratio > 1.0
     - Profit Factor > 2.0
     - Max Drawdown < 15%
     """
-    
+
     RISK_FREE_RATE = 0.05  # 5% annual risk-free rate
     TARGET_SHARPE = 1.0
     TARGET_PROFIT_FACTOR = 2.0

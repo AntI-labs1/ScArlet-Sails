@@ -47,20 +47,20 @@ class TestRollingDispersionCalculator:
         assert state.current_std < 1e-10  # Machine precision zero
     
     def test_perfect_agreement_low_dispersion(self):
-        """Perfect agreement results in low dispersion."""
+        """Perfect agreement (zero std) → max multiplier (high confidence)."""
         calc = RollingDispersionCalculator()
         state = calc.update(p_rb=0.7, p_ml=0.7, p_hyb=0.7)
-        
+
         assert state.current_std < 1e-10  # Machine precision zero
-        assert state.confidence_multiplier == calc.min_mult
-    
+        assert state.confidence_multiplier == calc.max_mult
+
     def test_high_disagreement_high_dispersion(self):
-        """High disagreement results in high dispersion."""
+        """High disagreement (high std) → min multiplier (low confidence)."""
         calc = RollingDispersionCalculator()
         state = calc.update(p_rb=0.2, p_ml=0.8, p_hyb=0.5)
-        
+
         assert state.current_std > 0.2
-        assert state.confidence_multiplier >= 1.0
+        assert state.confidence_multiplier == calc.min_mult
     
     def test_rolling_window_fills(self):
         """Rolling window accumulates samples."""

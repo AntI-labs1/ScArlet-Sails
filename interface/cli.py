@@ -471,6 +471,37 @@ class DecisionLogger:
         
         return trade_id
     
+    def get_current_drawdown(self) -> float:
+        """
+        Compute current drawdown from the closed-trade portion of the log.
+
+        Walks closed trades (`pnl_pct is not None`) in chronological order,
+        maintains a cumulative equity curve (starting at 1.0), and returns
+        the drawdown of the latest equity vs the historical peak.
+
+        Returns:
+            Drawdown as a non-negative fraction (e.g. 0.073 == 7.3%). 0.0 if
+            there are no closed trades.
+        """
+        log_data = self._load_log()
+        trades = log_data.get("trades", [])
+
+        closed = [t for t in trades if t.get("pnl_pct") is not None]
+        if not closed:
+            return 0.0
+
+        # Compound P&L; pnl_pct is in percent (e.g. -1.5 for -1.5%)
+        equity = 1.0
+        peak = 1.0
+        for trade in closed:
+            equity *= 1.0 + (float(trade["pnl_pct"]) / 100.0)
+            if equity > peak:
+                peak = equity
+
+        if peak <= 0:
+            return 0.0
+        return max(0.0, (peak - equity) / peak)
+
     def update_outcome(
         self,
         trade_id: str,

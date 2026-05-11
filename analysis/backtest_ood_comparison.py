@@ -1,3 +1,4 @@
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py (см. backtesting/MIGRATION_NOTES.md).
 """
 Day 9: Backtest comparison - With vs Without OOD Penalty.
 Shows how OOD detection improves risk-adjusted returns.

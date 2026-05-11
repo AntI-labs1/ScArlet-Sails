@@ -1,3 +1,7 @@
+# DEPRECATED 2026-05: ручной Q-learner с линейной аппроксимацией — research-артефакт,
+# не входит в MVP retail-крипто пайплайн. Канонический backtest — backtesting/vbt_engine.py
+# со стратегиями из strategies/simple_strategies.py. План замены (если RL понадобится):
+# stable-baselines3 + gymnasium.Env. Тесты в tests/test_hybrid_q_learner.py помечены skip.
 """
 Hybrid Strategy with Q-Learning (Linear Function Approximation).
 

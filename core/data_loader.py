@@ -78,15 +78,23 @@ def load_market_data(
         If data file not found
     """
     validate_params(coin, timeframe)
-    
-    path = Path(data_dir) / f'{coin}_USDT_{timeframe}.parquet'
-    
-    if not path.exists():
+
+    # Support both naming conventions used in the repo:
+    #   canonical: BTC_USDT_15m.parquet
+    #   Binance-style / DVC-tracked: BTCUSDT_15m.parquet
+    base = Path(data_dir)
+    candidates = [
+        base / f'{coin}_USDT_{timeframe}.parquet',
+        base / f'{coin}USDT_{timeframe}.parquet',
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+
+    if path is None:
+        searched = '\n  '.join(str(p.absolute()) for p in candidates)
         raise FileNotFoundError(
-            f"Data file not found: {path}\n"
-            f"Verify file exists at: {path.absolute()}"
+            f"Data file not found for {coin}/{timeframe}. Tried:\n  {searched}"
         )
-    
+
     df = pd.read_parquet(path)
     
     # Validate columns
@@ -187,18 +195,29 @@ def get_data_info(data_dir: str = 'data/raw') -> Dict:
         Information about available data
     """
     path = Path(data_dir)
-    files = list(path.glob('*_USDT_*.parquet')) if path.exists() else []
-    
+    if path.exists():
+        files = list(path.glob('*_USDT_*.parquet')) + list(path.glob('*USDT_*.parquet'))
+        # Deduplicate (a single file matches both patterns if it uses underscore)
+        files = sorted(set(files))
+    else:
+        files = []
+
     found_coins = set()
     found_timeframes = set()
     file_info = []
-    
+
     for f in files:
-        name = f.stem  # e.g., 'BTC_USDT_15m'
+        name = f.stem  # e.g., 'BTC_USDT_15m' or 'BTCUSDT_15m'
         parts = name.split('_')
-        if len(parts) >= 3:
-            coin = parts[0]
-            tf = parts[2]
+        coin: Optional[str] = None
+        tf: Optional[str] = None
+        if len(parts) >= 3 and parts[1] == 'USDT':
+            # canonical 'BTC_USDT_15m'
+            coin, tf = parts[0], parts[2]
+        elif len(parts) == 2 and parts[0].endswith('USDT'):
+            # Binance-style 'BTCUSDT_15m'
+            coin, tf = parts[0][:-4], parts[1]
+        if coin is not None and tf is not None:
             found_coins.add(coin)
             found_timeframes.add(tf)
             file_info.append({

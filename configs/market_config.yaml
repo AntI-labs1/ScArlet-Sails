@@ -1,7 +1,0 @@
-tickers:
-  - BTC
-  - ETH
-  - SOL
-primary_timeframe: 15m
-confirm_timeframe: 1h
-

@@ -90,7 +90,14 @@ class FeatureEngine:
         else:
             raise ValueError(f"Unsupported timeframe: {freq}")
 
-    def calculate_features(self, df_15m, df_1h=None, df_4h=None, df_1d=None):
+    def calculate_features(
+        self,
+        df_15m,
+        df_1h=None,
+        df_4h=None,
+        df_1d=None,
+        fit_scaler: bool = False,
+    ):
         """
         Рассчитывает multi-timeframe признаки.
 
@@ -99,6 +106,10 @@ class FeatureEngine:
             df_1h: DataFrame с OHLCV для 1h (optional)
             df_4h: DataFrame с OHLCV для 4h (optional)
             df_1d: DataFrame с OHLCV для 1d (optional)
+            fit_scaler: True ТОЛЬКО для train-данных. На любом другом наборе
+                (val/test/inference) передавай False — иначе будет look-ahead leakage.
+                Если normalize=True и scaler ещё не загружен — каллер обязан
+                либо вызвать load_scaler(), либо явно передать fit_scaler=True.
 
         Returns:
             DataFrame с 31 признаком
@@ -155,7 +166,7 @@ class FeatureEngine:
 
         # Normalize if enabled
         if self.normalize:
-            features = self._normalize_features(features)
+            features = self._normalize_features(features, fit=fit_scaler)
 
         logger.info(f"Признаков создано: {len(features.columns)}")
 
@@ -246,15 +257,32 @@ class FeatureEngine:
         df_resampled = df.reindex(target_index, method="ffill")
         return df_resampled
 
-    def _normalize_features(self, features):
-        """Normalize features using StandardScaler"""
-        if self.scaler is None:
+    def _normalize_features(self, features, fit: bool = False):
+        """
+        Normalize features using StandardScaler.
+
+        Args:
+            features: DataFrame to normalize.
+            fit: If True, fit a fresh StandardScaler on `features` and transform.
+                 Use ONLY for train data; passing True on val/test/inference
+                 leaks future statistics into past observations.
+
+        Raises:
+            RuntimeError: normalize=True but no scaler is loaded and fit=False.
+        """
+        if fit:
             self.scaler = StandardScaler()
             features_scaled = self.scaler.fit_transform(features)
-            logger.info("Признаки нормализованы (новый scaler)")
+            logger.info("Признаки нормализованы (новый scaler, fit на train)")
         else:
+            if self.scaler is None:
+                raise RuntimeError(
+                    "FeatureEngine.normalize=True, но scaler не загружен. "
+                    "Вызови load_scaler(path) или передай fit_scaler=True только "
+                    "для train-данных."
+                )
             features_scaled = self.scaler.transform(features)
-            logger.info("Признаки нормализованы (существующий scaler)")
+            logger.info("Признаки нормализованы (загруженный scaler)")
 
         return pd.DataFrame(
             features_scaled,

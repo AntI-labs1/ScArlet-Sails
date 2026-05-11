@@ -1,3 +1,4 @@
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py (см. backtesting/MIGRATION_NOTES.md).
 """
 Day 10: Integration Backtest with REAL P_rb.
 No more simulation - using actual RuleBasedStrategy.

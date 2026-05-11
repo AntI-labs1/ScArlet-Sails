@@ -1,9 +1,21 @@
 # backtesting/honest_backtest.py
+#
+# DEPRECATED 2026-05: используйте backtesting/vbt_engine.py
+# (см. backtesting/MIGRATION_NOTES.md). Этот движок оставлен как research-артефакт
+# и не получает обновлений: Sharpe-аннуализация и обработка комиссий расходятся
+# с каноном.
+import warnings as _warnings
+
 import pandas as pd
 import numpy as np
 from typing import Dict
-import warnings
-warnings.filterwarnings('ignore')
+
+_warnings.warn(
+    "backtesting.honest_backtest is deprecated; use backtesting.vbt_engine.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+_warnings.filterwarnings('ignore')
 
 class HonestBacktestEngine:
     """

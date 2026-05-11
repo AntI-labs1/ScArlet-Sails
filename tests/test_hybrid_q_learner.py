@@ -1,14 +1,25 @@
 """
 Tests for Hybrid Q-Learner.
+
+Q-learner — research-артефакт; стратегия не входит в MVP retail-крипто пайплайн
+(`backtesting/vbt_engine.py` + основные стратегии в `strategies/simple_strategies.py`).
+Тесты помечены skip и переоткрываются вручную, когда/если Q-learner будет
+переписан (план — на stable-baselines3, см. отчёт ревизии 2026-05).
 """
 import pytest
-import numpy as np
-import tempfile
-from pathlib import Path
-import sys
+
+pytestmark = pytest.mark.skip(
+    reason="hybrid_q_learner deprecated (see strategies/hybrid_q_learner.py); "
+    "not in MVP scope. Re-enable when migrating to stable-baselines3."
+)
+
+import numpy as np  # noqa: E402
+import tempfile  # noqa: E402, F401
+from pathlib import Path  # noqa: E402
+import sys  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from strategies.hybrid_q_learner import (
+from strategies.hybrid_q_learner import (  # noqa: E402
     HybridQLearner,
     WeightAction,
     MarketState,
