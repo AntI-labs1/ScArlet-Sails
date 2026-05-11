@@ -71,7 +71,8 @@ def _month_range(start: str, end: str) -> List[str]:
 
 
 def _download_month(symbol: str, tf: str, ym: str, max_retries: int = 3) -> Optional[pd.DataFrame]:
-    """Download and parse one month-ZIP. Returns None if 404 (no data yet)."""
+    """Download, parse, and normalize one month-ZIP. Returns canonical OHLCV
+    (DatetimeIndex UTC), or None if the month isn't published yet (404)."""
     url = f"{BASE_URL}/{symbol}/{tf}/{symbol}-{tf}-{ym}.zip"
     for attempt in range(max_retries):
         try:
@@ -81,8 +82,8 @@ def _download_month(symbol: str, tf: str, ym: str, max_retries: int = 3) -> Opti
             with zipfile.ZipFile(io.BytesIO(blob)) as zf:
                 csv_name = zf.namelist()[0]
                 with zf.open(csv_name) as fh:
-                    df = pd.read_csv(fh, header=None, names=_KLINE_COLUMNS)
-            return df
+                    raw = pd.read_csv(fh, header=None, names=_KLINE_COLUMNS)
+            return _normalize(raw)
         except HTTPError as e:
             if e.code == 404:
                 # Month not published yet — silently skip.
@@ -95,10 +96,15 @@ def _download_month(symbol: str, tf: str, ym: str, max_retries: int = 3) -> Opti
 
 
 def _normalize(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert raw Binance kline frame to canonical OHLCV."""
-    # open_time is ms since epoch; some recent files use microseconds — auto-detect.
+    """Convert raw Binance kline frame to canonical OHLCV.
+
+    Binance Vision migrated klines timestamp from milliseconds to microseconds
+    around 2025-01-01. Detection is per-frame (not per-batch) so concatenating
+    pre- and post-migration months can't poison each other.
+    """
     sample = int(df["open_time"].iloc[0])
-    unit = "us" if sample > 10**15 else "ms"
+    # ms for 2023+ are ~1.7e12; us for 2025+ are ~1.7e15. 1e14 cleanly separates.
+    unit = "us" if sample > 10**14 else "ms"
     out = pd.DataFrame(
         {
             "open": df["open"].astype(float),
@@ -110,6 +116,14 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
         index=pd.to_datetime(df["open_time"], unit=unit, utc=True),
     )
     out.index.name = "timestamp"
+    # Sanity: every timestamp must fall in [2017, now+1] — guards against unit
+    # detection bugs from changing Binance file formats.
+    if (out.index.year < 2017).any() or (out.index.year > datetime.utcnow().year + 1).any():
+        bad = out.index[(out.index.year < 2017) | (out.index.year > datetime.utcnow().year + 1)][:3]
+        raise ValueError(
+            f"timestamp out of plausible range — likely wrong unit detection. "
+            f"sample={sample}, unit={unit!r}, examples={list(bad)}"
+        )
     return out.sort_index()
 
 
@@ -139,8 +153,8 @@ def fetch_pair(
         logger.warning("[empty] no data for %s/%s in %s..%s", coin, tf, months[0], months[-1])
         return out_path
 
-    combined = pd.concat(frames, ignore_index=True)
-    ohlcv = _normalize(combined)
+    # Each frame is already normalized (DatetimeIndex UTC) by _download_month.
+    ohlcv = pd.concat(frames).sort_index()
     # de-dup any month-boundary overlap
     ohlcv = ohlcv[~ohlcv.index.duplicated(keep="first")]
     out_dir.mkdir(parents=True, exist_ok=True)
