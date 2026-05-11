@@ -29,7 +29,7 @@ import sys
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from urllib.request import Request, urlopen
@@ -105,21 +105,31 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     sample = int(df["open_time"].iloc[0])
     # ms for 2023+ are ~1.7e12; us for 2025+ are ~1.7e15. 1e14 cleanly separates.
     unit = "us" if sample > 10**14 else "ms"
+
+    # CRITICAL: use .to_numpy() (drops the source RangeIndex) so the new
+    # DatetimeIndex aligns positionally. Passing pd.Series with a different
+    # index here makes pandas align-by-index → all values become NaN.
     out = pd.DataFrame(
         {
-            "open": df["open"].astype(float),
-            "high": df["high"].astype(float),
-            "low": df["low"].astype(float),
-            "close": df["close"].astype(float),
-            "volume": df["volume"].astype(float),
+            "open": df["open"].astype(float).to_numpy(),
+            "high": df["high"].astype(float).to_numpy(),
+            "low": df["low"].astype(float).to_numpy(),
+            "close": df["close"].astype(float).to_numpy(),
+            "volume": df["volume"].astype(float).to_numpy(),
         },
-        index=pd.to_datetime(df["open_time"], unit=unit, utc=True),
+        index=pd.to_datetime(df["open_time"].to_numpy(), unit=unit, utc=True),
     )
     out.index.name = "timestamp"
+    # Defensive: if any close is NaN, the index-alignment bug is back.
+    if out["close"].isna().any():
+        raise ValueError(
+            f"close has {out['close'].isna().sum()} NaN values after normalize; "
+            "index alignment bug regressed."
+        )
     # Sanity: every timestamp must fall in [2017, now+1] — guards against unit
     # detection bugs from changing Binance file formats.
-    if (out.index.year < 2017).any() or (out.index.year > datetime.utcnow().year + 1).any():
-        bad = out.index[(out.index.year < 2017) | (out.index.year > datetime.utcnow().year + 1)][:3]
+    if (out.index.year < 2017).any() or (out.index.year > datetime.now(timezone.utc).year + 1).any():
+        bad = out.index[(out.index.year < 2017) | (out.index.year > datetime.now(timezone.utc).year + 1)][:3]
         raise ValueError(
             f"timestamp out of plausible range — likely wrong unit detection. "
             f"sample={sample}, unit={unit!r}, examples={list(bad)}"
@@ -187,7 +197,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _default_end_month() -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     # Binance Vision publishes last month around the 1st-3rd of the next month;
     # safest default is to ask for the prior month.
     y, m = now.year, now.month - 1
