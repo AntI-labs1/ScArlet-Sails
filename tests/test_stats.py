@@ -176,12 +176,26 @@ class TestPBO:
         assert "error" in details
 
     def test_pbo_insufficient_observations(self):
+        # Threshold lowered from T<10 to T<4 in revision 2026-05 to allow
+        # small-sample PBO with explicit `warning` field in details.
         df = pd.DataFrame(
-            {"s1": [0.01, 0.02], "s2": [0.01, -0.01]}
+            {"s1": [0.01, 0.02, 0.03], "s2": [0.01, -0.01, 0.02]}
         )
         pbo_score, details = pbo(df, n_splits=8)
+        # T=3 < 4 → still errors out
         assert pbo_score == 0.0
         assert "error" in details
+
+    def test_pbo_small_sample_returns_warning(self):
+        # T=6 should now succeed (not error) and include a small-sample warning
+        rng = np.random.default_rng(7)
+        df = pd.DataFrame(rng.normal(0, 0.01, size=(6, 4)),
+                          columns=[f"s{i}" for i in range(4)])
+        pbo_score, details = pbo(df, n_splits=6)
+        assert 0.0 <= pbo_score <= 1.0
+        assert "n_strategies" in details
+        assert details["n_strategies"] == 4
+        assert "warning" in details
 
 
 # =============================================================================

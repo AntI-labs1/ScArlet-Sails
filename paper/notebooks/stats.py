@@ -178,12 +178,20 @@ def pbo(returns_matrix: pd.DataFrame, n_splits: int = 16) -> Tuple[float, dict]:
     T, N = M.shape
     if N < 2:
         return 0.0, {"error": "need ≥2 strategies"}
-    if T < 10:
-        return 0.0, {"error": f"need ≥10 obs; got {T}"}
+    if T < 4:
+        return 0.0, {"error": f"need ≥4 obs; got {T}"}
+    # Adapt n_splits to T. For small T, use T directly (each block = 1 row).
     if n_splits % 2 != 0:
         n_splits += 1
     if n_splits > T:
+        # Use largest even number ≤ T, with floor at 4
         n_splits = max(4, (T // 2) * 2)
+    # Warn (informational) when sample is small
+    small_sample_warning = None
+    if T < 10:
+        small_sample_warning = (
+            f"small sample (T={T} < 10): PBO estimate has low statistical power"
+        )
 
     # Split T rows into n_splits roughly-equal partitions
     bounds = np.linspace(0, T, n_splits + 1, dtype=int)
@@ -213,7 +221,7 @@ def pbo(returns_matrix: pd.DataFrame, n_splits: int = 16) -> Tuple[float, dict]:
 
     logits = np.array(logits)
     pbo_score = float(np.mean(logits < 0))
-    return pbo_score, {
+    details = {
         "n_splits": n_splits,
         "n_strategies": N,
         "n_observations": T,
@@ -221,6 +229,9 @@ def pbo(returns_matrix: pd.DataFrame, n_splits: int = 16) -> Tuple[float, dict]:
         "logits_std": float(logits.std()),
         "n_combinations": len(logits),
     }
+    if small_sample_warning is not None:
+        details["warning"] = small_sample_warning
+    return pbo_score, details
 
 
 # =============================================================================
