@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "description": "Cost sensitivity sweep on SOL/4h CombinedStrategy. Tests how Sharpe degrades with increased position-size (proxy for commission impact).",
+    "source": "Kaggle session 2026-05-11",
+    "asset": "SOL",
+    "timeframe": "4h",
+    "fees": 0.001,
+    "slippage": 0.0005,
+    "n_trades": 54,
+    "freq": "4h"
+  },
+  "sweep": [
+    {"size_pct": 25, "total_return_pct": 18.49, "sharpe": 1.200, "max_dd_pct":  -4.23, "trades": 54},
+    {"size_pct": 50, "total_return_pct": 39.27, "sharpe": 1.201, "max_dd_pct":  -8.32, "trades": 54},
+    {"size_pct": 75, "total_return_pct": 62.45, "sharpe": 1.202, "max_dd_pct": -12.28, "trades": 54},
+    {"size_pct": 95, "total_return_pct": 82.77, "sharpe": 1.202, "max_dd_pct": -15.35, "trades": 54}
+  ],
+  "interpretation": "Sharpe is mathematically leverage-invariant: ratio of mean return to volatility scales identically with position size. Returns scale linearly with size (+18% → +83% from 25% to 95%); drawdowns also scale linearly (-4% → -15%). The Sharpe 1.20 on SOL is REAL but is the result of a single coin and does not generalize (see walk_forward_crypto_combined.json — same coin avg Sharpe across 8 windows is +0.76, and 13/14 other coins are net negative). Position sizing is a separate risk-management decision; it does not create edge."
+}

@@ -1,264 +1,202 @@
 # ScArlet-Sails
 
-**Algorithmic trading system combining quantitative strategies with LLM Council for pattern-based decision making.**
-<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/268ee985-4994-47c5-ad04-30524610cb77" />
+> **Status (May 2026)**: Closed as an actively-managed algorithmic trading project. Repurposed as (a) a reproducible research baseline supporting an honest-negative-result paper, and (b) a passive capital-allocation framework. See [`POST_MORTEM.md`](POST_MORTEM.md) for the full story.
 
-## Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python: 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Status: Research Baseline](https://img.shields.io/badge/Status-Research%20Baseline-orange.svg)](POST_MORTEM.md)
 
-ScArlet-Sails is a research and trading system that:
+---
 
-- Combines **multiple strategies** (rule-based, ML, hybrid/RL) into a unified framework
-- Analyzes **dispersion** between strategy decisions for risk management
-- Uses **LLM Council** to interpret patterns and provide human-readable recommendations
-- Keeps **human operator** in the loop for final decisions
+## TL;DR
 
-The system is built around **Council of Agents** architecture, where:
-- Quant modules provide numerical signals (P_rb, P_ml, P_hyb)
-- LLM agents interpret patterns and context from RAG
-- Human operator makes final trading decisions
+This repository contains the artifacts of an 8-month retail algorithmic-trading research project. After honest multi-market walk-forward auditing — **131 walk-forward windows across 14 cryptocurrencies and 4 precious metals** — the project was closed as an active-trading effort with the following empirical conclusion:
 
-## Architecture
+**Rule-based technical trading strategies do not have generalizable out-of-sample edge in our tested universe.** Trend-following on metals matches the literature baseline (Sharpe 0.4–0.6) but does not exceed passive buy-and-hold portfolios. The project's prior in-sample claim of Sharpe 2.91 was traced to four infrastructure bugs documented in [`POST_MORTEM.md`](POST_MORTEM.md).
+
+The repository now serves three purposes:
+
+1. **Research baseline** — methodology and code for honest backtesting (`backtesting/`, `core/`, `paper/notebooks/`)
+2. **Academic paper draft** — technical report of the negative-result audit (`paper/drafts/`)
+3. **Passive capital framework** — quarterly-rebalance script for actual money (`passive/`)
+
+---
+
+## Reading guide
+
+If you are here for...
+
+- **Why an 8-month project closed**: start with [`POST_MORTEM.md`](POST_MORTEM.md)
+- **The academic paper draft**: see [`paper/drafts/main.md`](paper/drafts/main.md) (5500 words, 19 refs)
+- **A casual blog version**: see [`paper/drafts/medium.md`](paper/drafts/medium.md) (English) or [`paper/drafts/medium_ru.md`](paper/drafts/medium_ru.md) (Russian)
+- **Quick overview for reviewers/recruiters**: [`paper/drafts/executive_summary.md`](paper/drafts/executive_summary.md)
+- **Reusable backtest code**: [`backtesting/vbt_engine.py`](backtesting/vbt_engine.py)
+- **Deflated Sharpe Ratio + PBO implementation**: [`paper/notebooks/stats.py`](paper/notebooks/stats.py)
+- **Run everything yourself on Kaggle**: [`kaggle/smoke_test.ipynb`](kaggle/smoke_test.ipynb) + [`paper/notebooks/missing_backtests.ipynb`](paper/notebooks/missing_backtests.ipynb)
+- **Quarterly passive rebalance**: [`passive/rebalance.py`](passive/rebalance.py)
+
+---
+
+## Key empirical results
+
+| Strategy class | Market | Walk-forward Sharpe | vs Buy-and-Hold |
+|---|---|---:|---|
+| Mean-reversion (RSI + BB + MA) | 14 crypto pairs, 4h | **−0.70 avg** (35% positive windows) | Catastrophic: 13/14 net negative |
+| Mean-reversion combined | 4 metals, 1d | −0.19 avg (52% positive — random) | Marginally negative |
+| **200-day SMA trend-following** | 4 metals, 1d | **+0.44 avg (4/4 positive)** | Underperforms B&H, lower DD |
+| Dual momentum (Antonacci) | 4 metals, monthly | **+0.62** | ≈ B&H equal-weight (+0.63) — no alpha |
+| Gold/Silver ratio mean-reversion | gold-silver pair | +0.27 / +0.61 | Combined +373% vs B&H +1630% |
+
+**Industry context**: AQR Style Premia Fund (institutional multi-factor) realizes Sharpe 0.41 since inception (target was 0.70). SG CTA Index averages 0.56. Passive 60/40 SPY+TLT realizes ~0.6–0.7 with zero work. Our retail results sit within or below this institutional band, indicating that the bottleneck is the strategy class, not the implementation.
+
+---
+
+## Repository structure
+
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                     DATA & STATE LAYER                           │
-│  Market data → Feature Engine → Canonical State S(t)             │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│                   SIGNAL LAYER (P_rb, P_ml, P_hyb)               │
-├──────────────────────────────────────────────────────────────────┤
-│  P_rb (Rule-Based)                                               │
-│  ├─ Opportunity Scorer: trend, momentum, volume                  │
-│  └─ Risk Penalty: GARCH, CVaR, drawdown                          │
-│                                                                  │
-│  P_ml (XGBoost, threshold from config.yaml: models.xgboost.threshold) │
-│  ├─ Multi-TF features: 4 timeframes × 31 indicators             │
-│  └─ Binary classifier: Long/Neutral                             │
-│                                                                  │
-│  P_hyb (Q-Learner, α=0.6, β=0.4)                                 │
-│  ├─ State discretization: (P_rb, P_ml, regime, dispersion)      │
-│  ├─ Q-learning: ε-greedy exploration, TD updates                │
-│  └─ Hybrid combination: 0.6×V(Q) + 0.4×P_rb                     │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│                    RISK LAYER (Week 2)                           │
-├──────────────────────────────────────────────────────────────────┤
-│  OOD Detector (Mahalanobis Distance)                             │
-│  ├─ Detects out-of-distribution market states                   │
-│  └─ Trained on historical feature covariance                    │
-│                                                                  │
-│  Regime Detector (ATR-based)                                     │
-│  ├─ Low volatility: ATR < 33rd percentile                       │
-│  ├─ Normal: 33rd-66th percentile                                │
-│  └─ High volatility: ATR > 66th percentile                      │
-│                                                                  │
-│  Rolling Dispersion                                              │
-│  └─ Measures agreement between P_rb, P_ml, P_hyb                │
-│                                                                  │
-│  Dynamic Position Sizer                                          │
-│  ├─ Inputs: OOD score, regime, dispersion                       │
-│  ├─ Range: 0.1 (minimal) to 1.5 (max leverage)                  │
-│  └─ Default: 1.0 (neutral conditions)                           │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│                   COUNCIL & RAG LAYER                            │
-│  [Quant Signals] + [S(t)] + [RAG Context]                        │
-│           ↓                                                      │
-│  LLM Council: Pattern Detection → Risk Assessment                │
-│           ↓                                                      │
-│  Structured Recommendation                                       │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│                   HUMAN DECISION LAYER                           │
-│  Recommendation → Human Review → ACCEPT/MODIFY/REJECT            │
-└──────────────────────────────────────────────────────────────────┘
-                              ↓
-┌──────────────────────────────────────────────────────────────────┐
-│                   EXECUTION & RISK LAYER                         │
-│  Position sizing, SL/TP, Kill-switch, Trade logging              │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-See [docs/SYSTEM_ARCHITECTURE_DETAILED.md](docs/SYSTEM_ARCHITECTURE_DETAILED.md) for detailed documentation.
-
-## Key Features
-
-### Quantitative Foundation
-- **Rule-based strategy** (P_rb) with opportunity scoring and risk penalties
-- **XGBoost ML** (P_ml) with multi-timeframe features (4 TF × 31 features)
-- **Hybrid Q-Learning strategy** (P_hyb) combining quant signals with RL value estimation
-
-### Risk Management (Week 2 Updates)
-- **OOD Detection**: Mahalanobis distance-based outlier detection for unusual market states
-- **Regime Detection**: ATR-based volatility regime classification (low/normal/high)
-- **Rolling Dispersion**: Real-time measurement of strategy agreement
-- **Dynamic Position Sizing**: Adaptive position sizing based on OOD score, regime, and dispersion
-  - Range: 0.1 (high uncertainty) to 1.5 (high confidence)
-  - Prevents overexposure in risky conditions
-  - Allows leverage in favorable setups
-
-### Performance Metrics
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Tests | 173+ | Unit + integration coverage |
-| Walk-forward Sharpe | **2.91** | Average across 5 folds |
-| Walk-forward Win Rate | 65.7% | Consistent across time periods |
-| Dynamic Sizing Sharpe | **2.11** | vs 1.51 static |
-| Dynamic Sizing Calmar | **8.98** | vs 3.19 static |
-| Max DD (dynamic) | -15.4% | vs -36.4% static |
-| Avg Position Size | 0.84 | Conservative sizing in practice |
-
-### LLM Council
-- Pattern detection from screenshots (vision) + numerical data
-- RAG retrieval of similar historical states
-- Structured recommendations with confidence and dissent
-
-### Research Goal
-- Dispersion analysis between P_rb, P_ml, P_hyb
-- ANOVA, Kolmogorov-Smirnov tests
-- Variance decomposition across market regimes
-
-## Project Structure
-```
-scarlet-sails/
-├── core/                    # Data processing and state building
-│   ├── feature_engine_v2.py
-│   ├── data_loader.py
-│   ├── canonical_state.py   # Unified S(t) builder
-│   ├── ood_detector.py      # [WEEK 2] Out-of-distribution detection
-│   ├── regime_detector.py   # [WEEK 2] Volatility regime classifier
-│   ├── rolling_dispersion.py # [WEEK 2] Strategy agreement tracker
-│   ├── dynamic_position_sizer.py # [WEEK 2] Adaptive position sizing
-│   └── sanitize_features.py # [WEEK 2] Feature validation
+ScArlet-Sails/
+├── POST_MORTEM.md                ← Project closure document (read first)
+├── README.md                     ← This file
 │
-├── components/              # Reusable scoring components
-│   ├── opportunity_scorer.py
-│   └── advanced_risk_penalty.py
+├── paper/                        ← Academic Track C
+│   ├── README.md                   ← Paper outline + target venues
+│   ├── drafts/
+│   │   ├── main.md                   ← Full paper (5500 words)
+│   │   ├── medium.md                 ← Medium-adapted version (English)
+│   │   ├── medium_ru.md              ← Medium-adapted version (Russian)
+│   │   ├── executive_summary.md      ← 1-page overview
+│   │   └── references.bib            ← 19 academic references
+│   ├── notebooks/
+│   │   ├── stats.py                  ← Deflated Sharpe + PBO (open-source impl)
+│   │   ├── missing_backtests.ipynb   ← Run all backtests on Kaggle (~30 min)
+│   │   └── figures.ipynb             ← Generate 6 publication figures
+│   ├── results/                    ← JSON: empirical data from this project
+│   ├── figures/                    ← PNG/PDF: matplotlib output
+│   └── build.sh                    ← pandoc: md → PDF/LaTeX/HTML
 │
-├── strategies/              # Quant strategy implementations
-│   ├── rule_based_v2.py     # P_rb(S)
-│   ├── xgboost_ml_v3.py     # P_ml(S)
-│   └── hybrid_q_learner.py  # [WEEK 2] P_hyb(S) with Q-learning
+├── passive/                      ← Capital-allocation Track D
+│   ├── README.md                   ← 3 portfolios × 4 broker contexts
+│   ├── portfolios.yaml             ← 8 portfolio definitions
+│   └── rebalance.py                ← Quarterly rebalance CLI
 │
-├── council/                 # LLM Council agents
-│   ├── base_agent.py
-│   ├── pattern_detector.py
-│   └── recommendation.py
+├── backtesting/                  ← Reusable backtest infrastructure
+│   ├── vbt_engine.py               ← Canonical vectorbt-based engine
+│   ├── MIGRATION_NOTES.md          ← Why and how we unified 7 engines
+│   └── (deprecated/* — research artefacts only)
 │
-├── rag/                     # Knowledge base
-│   ├── patterns/            # Pattern library
-│   ├── trades/              # Trade history
-│   └── lessons/             # Lessons learned
+├── core/                         ← Reusable utilities
+│   ├── data_loader.py              ← OHLCV loader (Binance/yfinance compatible)
+│   ├── metrics_calculator.py       ← Canonical bars_per_year + metrics
+│   ├── feature_engine_v2.py        ← Multi-timeframe feature engine
+│   └── (other modules; some research-only)
 │
-├── analysis/                # Backtesting and validation
-│   ├── walk_forward_validation.py # [WEEK 2] WFV implementation
-│   ├── backtest_dynamic_sizing.py # [WEEK 2] Dynamic vs static comparison
-│   ├── dispersion_analyzer.py
-│   └── dispersion_visualizer.py
+├── scripts/                      ← Data fetchers
+│   ├── fetch_binance_klines.py     ← Crypto OHLCV (Binance Vision, free)
+│   ├── fetch_metals.py             ← Metals OHLCV (yfinance, free)
+│   └── (other scripts)
 │
-├── execution/               # Order management and risk
-├── data/features/           # Parquet files (14 coins × 4 TF)
-├── docs/                    # Documentation
-│   ├── MATHEMATICAL_FRAMEWORK.md
-│   ├── SYSTEM_ARCHITECTURE_DETAILED.md
-│   └── PHASE3_STATUS.md
-└── tests/                   # Unit and integration tests
+├── kaggle/                       ← Cloud-runnable replication notebooks
+│   ├── README.md
+│   └── smoke_test.ipynb            ← Run pytest + vbt smoke in Kaggle
+│
+├── tests/                        ← pytest suite (synthetic data via conftest)
+│
+└── (research artefacts: strategies/, council/, rag/, analysis/, etc.
+    — REFERENCE ONLY, not part of the production path; see POST_MORTEM.md)
 ```
 
-## Data
+---
 
-The system uses pre-computed features stored in parquet format:
-- **Coins:** BTC, ETH, SOL, AVAX, DOT, LINK, UNI, LTC, ALGO, HBAR, LDO, SUI, ENA, ONDO
-- **Timeframes:** 15m, 1h, 4h, 1d
-- **Features:** 74 technical indicators per state
-- **History:** ~4 years (2021-12 to 2025-10)
+## Quick start
 
-## Installation
+### Option 1 — Replicate paper results on Kaggle (no local setup)
+
+1. Create Kaggle notebook with Internet=ON
+2. **File → Import Notebook → URL**:
+   ```
+   https://raw.githubusercontent.com/StarDust1508/ScArlet-Sails/main/paper/notebooks/missing_backtests.ipynb
+   ```
+3. Run All — ~30 minutes
+4. Results saved to `paper/results/*.json` and `paper/figures/*.pdf`
+
+### Option 2 — Local replication
+
 ```bash
-git clone https://github.com/AntI-labs1/ScArlet-Sails.git
+git clone https://github.com/StarDust1508/ScArlet-Sails.git
 cd ScArlet-Sails
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt   # подтянет vectorbt, quantstats и пр.
+pip install -r requirements.txt
+
+# Fetch real data (crypto: ~15min, metals: ~30sec)
+python scripts/fetch_binance_klines.py --start 2023-01
+python scripts/fetch_metals.py
+
+# Run backtests
+python run_backtest.py --strategy combined --coins BTC ETH SOL --timeframe 4h
+
+# Run paper notebooks
+jupyter notebook paper/notebooks/missing_backtests.ipynb
+jupyter notebook paper/notebooks/figures.ipynb
+
+# Build paper
+./paper/build.sh all  # requires pandoc + xelatex
 ```
-Python требуется **>=3.10** (см. `pyproject.toml`).
 
-## Usage
+### Option 3 — Just use the passive portfolio framework
 
-Канонический бэктест — через единый vectorbt-движок:
 ```bash
-# Health check (config, models, data layout)
-python main.py
-
-# Single-asset backtest (рекомендуемый путь)
-python run_backtest.py --strategy rsi --coin BTC --timeframe 15m
-
-# Multi-asset comparison
-python run_backtest.py --strategy combined --coins BTC ETH SOL --timeframe 15m
-
-# Training pipeline (XGBoost v3)
-python scripts/train_xgboost_v3.py --coin BTC --tf 4h
-
-# Walk-forward validation (legacy; будет смигрирована на vbt)
-python analysis/walk_forward_validation.py
-
-# Tests
-pytest tests/ -q
+python passive/rebalance.py --list
+python passive/rebalance.py --portfolio 60_40_us --total 10000
+python passive/rebalance.py --portfolio 60_40_us --current "SPY:6000,TLT:4500"
 ```
 
-**Старые скрипты `backtesting/honest_backtest*.py`, `analysis/backtest_*.py`,
-`core/backtest_engine.py` помечены DEPRECATED** — см. `backtesting/MIGRATION_NOTES.md`.
+---
 
-## Research
+## What you can re-use from this repository
 
-The primary research goal is to prove that P_rb, P_ml, and P_hyb produce **significantly different decisions** for the same market state S(t).
+If you are building your own honest research project, the following components are MIT-licensed and designed to be reused:
 
-This dispersion is not just academic — it's used for:
-- **Risk sizing:** High agreement → larger position, high disagreement → smaller or skip
-- **Regime detection:** Understanding when each strategy performs best
-- **Publication:** Formal statistical analysis for academic paper
+| Component | What it does | Lines |
+|---|---|---:|
+| [`backtesting/vbt_engine.py`](backtesting/vbt_engine.py) | Single-file vectorbt wrapper with canonical Sharpe annualization | 240 |
+| [`scripts/fetch_binance_klines.py`](scripts/fetch_binance_klines.py) | Crypto OHLCV from Binance Vision public archive (free, no key) | 220 |
+| [`scripts/fetch_metals.py`](scripts/fetch_metals.py) | Metals OHLCV from yfinance futures | 160 |
+| [`paper/notebooks/stats.py`](paper/notebooks/stats.py) | Deflated Sharpe Ratio + Probability of Backtest Overfitting | 280 |
+| [`core/metrics_calculator.py`](core/metrics_calculator.py) | Canonical bars-per-year per timeframe | 350 |
+| [`tests/conftest.py`](tests/conftest.py) | Synthetic OHLCV bootstrap for CI/Kaggle without real data | 80 |
+| [`passive/rebalance.py`](passive/rebalance.py) | Portfolio rebalance CLI with drift threshold checks | 180 |
 
-### Week 2 Achievements
-1. ✅ **OOD Detection**: Mahalanobis-based outlier detection with 95th percentile threshold
-2. ✅ **Regime Detection**: ATR-based volatility classification (3 regimes)
-3. ✅ **Dynamic Position Sizing**: Risk-adjusted sizing improves Calmar from 3.19→8.98
-4. ✅ **Q-Learning Strategy**: Hybrid P_hyb with episodic learning and value function
-5. ✅ **Walk-Forward Validation**: 5-fold validation with avg Sharpe 2.91
-6. ✅ **Feature Sanitization**: Robust NaN/Inf handling for production stability
-7. ✅ **173+ Tests**: Comprehensive unit and integration test coverage
+The patterns most worth copying:
 
-## Team
+- **Per-frame timestamp unit detection** (`scripts/fetch_binance_klines.py`): handles silent Binance Vision format migration from ms to µs around 2025-01-01.
+- **Position-size invariance assertion** (`paper/results/cost_sensitivity_sol.json` discussion): verifies the backtest engine doesn't have bug 4 (Sharpe-annualization drift).
+- **Honest negative-result reporting structure** (`paper/drafts/main.md` §6): inventory of bugs, their detection method, fix, and net effect on prior claims.
 
-- **ANT_S** — Operator, Researcher, Final Decision Maker
-- **Egor 1, Egor 2** — Pattern annotation, RAG maintenance
-- **Mathematicians** — Statistical validation
+---
 
-## Status
+## Citation
 
-### Phase 1: Foundation ✅
-- [x] Data pipeline (59 parquet files)
-- [x] Feature engine v2
-- [x] Rule-based strategy (P_rb)
-- [x] XGBoost ML strategy (P_ml)
-- [x] Risk components (GARCH, CVaR)
+If you use this work in academic context:
 
-### Phase 2: Advanced Risk & RL ✅ (Week 2)
-- [x] OOD detection
-- [x] Regime detection
-- [x] Dynamic position sizing
-- [x] Hybrid Q-learner strategy (P_hyb)
-- [x] Walk-forward validation
-- [x] Feature sanitization
+```bibtex
+@misc{scarlet_sails_2026,
+  author       = {Bubble3 et al.},
+  title        = {{ScArlet-Sails}: A Multi-Market Walk-Forward Audit of Retail Technical Trading Strategies},
+  year         = {2026},
+  publisher    = {GitHub},
+  howpublished = {\url{https://github.com/StarDust1508/ScArlet-Sails}},
+  note         = {Tag v1.0-research-baseline}
+}
+```
 
-### Phase 3: Council & Human-in-Loop 🚧
-- [ ] Canonical state builder
-- [ ] Council agents
-- [ ] RAG retrieval
-- [ ] Human interface
-- [ ] Full dispersion analysis
+---
+
+## Acknowledgments
+
+Extensive collaboration with Anthropic Claude (Opus 4.7) throughout the May 2026 audit and closure. The same model that helped construct the original over-engineered architecture also conducted the audit that compelled its closure — see [`POST_MORTEM.md`](POST_MORTEM.md) §"AI-assisted construction paired with AI-assisted auditing" for reflection on this pattern.
+
+---
 
 ## License
 
-Private repository. All rights reserved.
+MIT — see [LICENSE](LICENSE) if present; otherwise standard MIT terms apply to all code and data in this repository. Paper draft is CC-BY upon publication.

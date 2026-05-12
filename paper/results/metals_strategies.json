@@ -1,0 +1,83 @@
+{
+  "_meta": {
+    "description": "Three strategy classes on 4 precious metals (gold/silver/copper/platinum) daily, 2000-2026 (25 years).",
+    "source": "Kaggle session 2026-05-11, Yahoo Finance futures (GC=F/SI=F/HG=F/PL=F)",
+    "engine": "vectorbt 0.26",
+    "fees": 0.0005,
+    "slippage": 0.0002,
+    "size_fraction": 0.95,
+    "timeframe": "1d"
+  },
+
+  "sma200_trend_following": {
+    "description": "Hold while close > SMA(200), cash otherwise.",
+    "summary": {
+      "avg_sharpe": 0.44,
+      "all_positive_sharpe": true,
+      "n_better_than_bh": 0
+    },
+    "per_metal": [
+      {"asset": "GOLD",     "years": 25.6, "strategy_return_pct": 515.24, "sharpe": 0.68, "max_dd_pct": -39.96, "trades": 103, "bh_return_pct": 1629.24, "edge_pct": -1114.01},
+      {"asset": "SILVER",   "years": 25.6, "strategy_return_pct": 277.65, "sharpe": 0.40, "max_dd_pct": -70.75, "trades": 127, "bh_return_pct": 1642.49, "edge_pct": -1364.84},
+      {"asset": "COPPER",   "years": 25.6, "strategy_return_pct": 364.18, "sharpe": 0.49, "max_dd_pct": -51.51, "trades":  95, "bh_return_pct":  630.68, "edge_pct":  -266.49},
+      {"asset": "PLATINUM", "years": 25.7, "strategy_return_pct":  18.17, "sharpe": 0.19, "max_dd_pct": -88.24, "trades": 126, "bh_return_pct":  428.48, "edge_pct":  -410.32}
+    ]
+  },
+
+  "gold_silver_ratio": {
+    "description": "Mean-reversion on Gold/Silver ratio. Long gold when ratio in bottom quintile of rolling 252d distribution; long silver when in top quintile; cash in middle.",
+    "summary": {
+      "ratio_min": 32.0,
+      "ratio_max": 125.9,
+      "ratio_median": 68.5,
+      "period_bars": 6446
+    },
+    "results": [
+      {"side": "gold (long gold)",     "total_return_pct":  56.30, "sharpe": 0.27, "max_dd_pct": -28.05, "trades": 35},
+      {"side": "silver (long silver)", "total_return_pct": 689.41, "sharpe": 0.61, "max_dd_pct": -40.86, "trades": 32},
+      {"side": "combined (50/50)",     "total_return_pct": 372.85, "sharpe": null,  "max_dd_pct":   null, "trades": null}
+    ],
+    "benchmarks": {
+      "bh_gold_pct":   1629.24,
+      "bh_silver_pct": 1642.49
+    }
+  },
+
+  "dual_momentum_portfolio": {
+    "description": "Antonacci dual momentum: monthly rebalance, 12-month lookback, top-2 of 4 metals by trailing return, equal-weighted, cash if no positive momentum.",
+    "results": {
+      "strategy": {
+        "total_return_pct": 1438.33,
+        "cagr_pct": 12.70,
+        "sharpe": 0.62,
+        "max_dd_pct": -49.51,
+        "rebalances": 263,
+        "years": 22.9
+      },
+      "bh_equal_weight": {
+        "total_return_pct": 1258.04,
+        "cagr_pct": 12.09,
+        "sharpe": 0.63,
+        "max_dd_pct": -53.86
+      }
+    },
+    "interpretation": "Strategy and B&H equal-weight produce essentially identical Sharpe (0.62 vs 0.63). Marginal +0.6% CAGR and -4.4% MaxDD improvement do not constitute meaningful edge."
+  },
+
+  "combined_strategy_walk_forward": {
+    "description": "CombinedStrategy on 4 metals × 1d × 8 walk-forward windows.",
+    "summary": {
+      "avg_sharpe": -0.19,
+      "median_sharpe": 0.09,
+      "positive_windows_total": 12,
+      "total_windows": 23,
+      "positive_pct": 52
+    },
+    "per_metal": [
+      {"asset": "GOLD",     "n_valid_windows": 7, "sharpe_mean":  0.21, "sharpe_median":  0.08, "positive_windows": 4, "avg_ret_pct":  1.82},
+      {"asset": "SILVER",   "n_valid_windows": 4, "sharpe_mean": -0.33, "sharpe_median":  0.55, "positive_windows": 2, "avg_ret_pct": -1.60},
+      {"asset": "COPPER",   "n_valid_windows": 7, "sharpe_mean":  0.12, "sharpe_median":  0.10, "positive_windows": 4, "avg_ret_pct":  1.39},
+      {"asset": "PLATINUM", "n_valid_windows": 5, "sharpe_mean": -0.76, "sharpe_median": -1.21, "positive_windows": 2, "avg_ret_pct": -2.93}
+    ]
+  }
+}

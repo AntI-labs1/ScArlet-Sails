@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "description": "Walk-forward analysis: CombinedStrategy (RSI<40 + price>MA50 + price near lower BB) on 14 crypto pairs at 4h timeframe, 8 rolling windows each (2023-01-01 to 2026-04-30, ~28 months).",
+    "source": "Kaggle session 2026-05-11, verified deterministic seed via hashlib.sha256",
+    "engine": "vectorbt 0.26 via backtesting/vbt_engine.py",
+    "fees": 0.001,
+    "slippage": 0.0005,
+    "size_fraction": 0.95,
+    "timeframe": "4h",
+    "bars_per_year": 2190,
+    "n_walk_forward_windows": 8
+  },
+  "summary": {
+    "avg_sharpe": -0.70,
+    "median_sharpe": -0.42,
+    "positive_windows_total": 38,
+    "total_windows": 108,
+    "positive_pct": 35.2,
+    "n_strategies_tested": 14
+  },
+  "per_coin": [
+    {"coin": "BTC",  "n_valid_windows": 8, "sharpe_mean": -0.28, "sharpe_median":  0.08, "positive_windows": 4},
+    {"coin": "ETH",  "n_valid_windows": 8, "sharpe_mean":  0.03, "sharpe_median": -0.13, "positive_windows": 3},
+    {"coin": "SOL",  "n_valid_windows": 8, "sharpe_mean":  0.76, "sharpe_median":  0.83, "positive_windows": 6},
+    {"coin": "AVAX", "n_valid_windows": 8, "sharpe_mean": -1.58, "sharpe_median": -0.88, "positive_windows": 0},
+    {"coin": "DOT",  "n_valid_windows": 8, "sharpe_mean": -0.70, "sharpe_median": -0.83, "positive_windows": 2},
+    {"coin": "LINK", "n_valid_windows": 8, "sharpe_mean": -1.22, "sharpe_median": -0.52, "positive_windows": 2},
+    {"coin": "UNI",  "n_valid_windows": 8, "sharpe_mean": -0.54, "sharpe_median": -0.35, "positive_windows": 2},
+    {"coin": "LTC",  "n_valid_windows": 8, "sharpe_mean": -1.50, "sharpe_median": -1.86, "positive_windows": 2},
+    {"coin": "ALGO", "n_valid_windows": 8, "sharpe_mean": -0.41, "sharpe_median": -0.22, "positive_windows": 3},
+    {"coin": "HBAR", "n_valid_windows": 8, "sharpe_mean": -0.72, "sharpe_median": -0.48, "positive_windows": 2},
+    {"coin": "LDO",  "n_valid_windows": 8, "sharpe_mean": -0.45, "sharpe_median":  0.20, "positive_windows": 5},
+    {"coin": "SUI",  "n_valid_windows": 8, "sharpe_mean": -0.92, "sharpe_median": -1.23, "positive_windows": 2},
+    {"coin": "ENA",  "n_valid_windows": 6, "sharpe_mean": -0.96, "sharpe_median": -1.63, "positive_windows": 2},
+    {"coin": "ONDO", "n_valid_windows": 6, "sharpe_mean": -1.23, "sharpe_median":  0.31, "positive_windows": 3}
+  ],
+  "interpretation": "Across 108 walk-forward windows (14 coins × 8 windows, modulo coins with shorter history), average Sharpe is -0.70 with only 35% positive windows — worse than coin-flip (50%). SOL's positive Sharpe (+0.76) is a single-coin outlier and does not represent a generalizable edge."
+}

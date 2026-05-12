@@ -55,6 +55,13 @@ tqdm>=4.66.0
 requests>=2.31.0
 
 # ========================================
+# Market data fetchers
+# ========================================
+# yfinance — free historical data for stocks, ETFs, futures (Yahoo Finance)
+# Used by scripts/fetch_metals.py for precious metals futures.
+yfinance>=0.2.40
+
+# ========================================
 # RAG (Retrieval-Augmented Generation)
 # ========================================
 sentence-transformers>=2.5.0
